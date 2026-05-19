@@ -41,6 +41,7 @@ export default function Home() {
   const toastTimer = useRef<any>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const postImageRef = useRef<HTMLInputElement>(null)
+  const bannerRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -175,6 +176,19 @@ export default function Home() {
     notify('Photo updated', 'pos')
   }
 
+  const handleBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!profile || !e.target.files?.[0]) return
+    const file = e.target.files[0]
+    const ext = file.name.split('.').pop()
+    const path = `banner-${profile.id}.${ext}`
+    await supabase.storage.from('avatars').upload(path, file, { upsert: true })
+    const { data } = supabase.storage.from('avatars').getPublicUrl(path)
+    await supabase.from('profiles').update({ banner_url: data.publicUrl } as any).eq('id', profile.id)
+    setProfile(p => p ? { ...p, banner_url: data.publicUrl } as any : p)
+    setProfiles(ps => ps.map(p => p.id === profile.id ? { ...p, banner_url: data.publicUrl } as any : p))
+    notify('Banner updated', 'pos')
+  }
+
   const handleSaveBio = async () => {
     if (!profile) return
     await supabase.from('profiles').update({ bio: bioText }).eq('id', profile.id)
@@ -194,7 +208,7 @@ export default function Home() {
   const topPostUser = topPost ? profiles.find(p => p.id === topPost.user_id) : null
   const sorted = [...posts].sort((a, b) => filter === 'trending' ? b.aura - a.aura : new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 
-  const Av = ({ p, size = 36 }: { p: Profile; size?: number }) => (
+  const Av = ({ p, size = 36 }: { p: any; size?: number }) => (
     <div style={{
       width: size, height: size, borderRadius: '50%', flexShrink: 0,
       overflow: 'hidden', border: `1.5px solid ${S.border2}`,
@@ -212,7 +226,7 @@ export default function Home() {
     <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 16, ...style }}>{children}</div>
   )
 
-  const PostCard = ({ post }: { post: Post }) => {
+  const PostCard = ({ post }: { post: any }) => {
     const owner = profiles.find(p => p.id === post.user_id)
     if (!owner) return null
     const isOwn = post.user_id === profile?.id
@@ -231,7 +245,7 @@ export default function Home() {
               {owner.streak >= 3 && <span style={{ fontSize: 12, color: S.fire }}>🔥{owner.streak}</span>}
               <span style={{ fontSize: 11, color: S.text3, marginLeft: 'auto' }}>{timeAgo(post.created_at)}</span>
             </div>
-            <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color: '#ccc', direction: 'ltr', textAlign: 'left' }}>{post.text}</p>
+            <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color: '#ccc', unicodeBidi: 'plaintext', textAlign: 'left' }}>{post.text}</p>
             {post.image_url && (
               <img src={post.image_url} alt="post" style={{ width: '100%', borderRadius: 10, marginTop: 10, maxHeight: 400, objectFit: 'contain', background: S.card2 }} />
             )}
@@ -262,7 +276,7 @@ export default function Home() {
     )
   }
 
-  const getBadges = (p: Profile) => {
+  const getBadges = (p: any) => {
     const b = ['🌐 Joined']
     if (p.streak >= 7) b.push('🔥 Streaker')
     if (p.streak >= 30) b.push('💀 Obsessed')
@@ -285,12 +299,12 @@ export default function Home() {
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
+        html { -webkit-text-size-adjust: 100%; }
         @keyframes toastIn { from { opacity:0; transform:translateX(-50%) translateY(-10px) } to { opacity:1; transform:translateX(-50%) translateY(0) } }
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-track { background: ${S.bg}; }
         ::-webkit-scrollbar-thumb { background: ${S.border2}; border-radius: 4px; }
-        textarea { direction: ltr; text-align: left; }
-        input { direction: ltr; }
+        textarea, input { direction: ltr !important; unicode-bidi: plaintext !important; text-align: left !important; }
       `}</style>
 
       {toast && (
@@ -306,8 +320,16 @@ export default function Home() {
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, backdropFilter: 'blur(4px)' }}
           onClick={() => { setModalProfile(null); setEditingBio(false) }}>
           <div onClick={e => e.stopPropagation()} style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 20, width: '100%', maxWidth: 440, maxHeight: '88vh', overflowY: 'auto' }}>
-            <div style={{ height: 90, background: clownCount(modalProfile.aura) > 0 ? `repeating-linear-gradient(45deg,${S.redDim} 0,${S.redDim} 12px,${S.card} 12px,${S.card} 24px)` : `linear-gradient(135deg, ${S.blueDim}, ${S.card})`, borderRadius: '20px 20px 0 0', position: 'relative' }}>
-              <button onClick={() => setModalProfile(null)} style={{ position: 'absolute', top: 12, right: 12, width: 30, height: 30, borderRadius: '50%', background: 'rgba(0,0,0,.4)', border: `1px solid ${S.border2}`, cursor: 'pointer', fontSize: 14, color: S.text2 }}>✕</button>
+            <div style={{
+              height: 90,
+              background: clownCount(modalProfile.aura) > 0
+                ? `repeating-linear-gradient(45deg,${S.redDim} 0,${S.redDim} 12px,${S.card} 12px,${S.card} 24px)`
+                : `linear-gradient(135deg, ${S.blueDim}, ${S.card})`,
+              backgroundImage: (modalProfile as any).banner_url ? `url(${(modalProfile as any).banner_url})` : undefined,
+              backgroundSize: 'cover', backgroundPosition: 'center',
+              borderRadius: '20px 20px 0 0', position: 'relative'
+            }}>
+              <button onClick={() => setModalProfile(null)} style={{ position: 'absolute', top: 12, right: 12, width: 30, height: 30, borderRadius: '50%', background: 'rgba(0,0,0,.5)', border: `1px solid ${S.border2}`, cursor: 'pointer', fontSize: 14, color: '#fff' }}>✕</button>
             </div>
             <div style={{ padding: '0 20px 24px', marginTop: -22 }}>
               <Av p={modalProfile} size={54} />
@@ -392,7 +414,7 @@ export default function Home() {
         {topPostUser && <><span style={{ color: S.border2 }}>·</span><span style={{ color: S.blue }}>👑 {topPostUser.username} leading</span></>}
       </div>
 
-      <div style={{ background: S.card, borderBottom: `1px solid ${S.border}`, display: 'flex', overflowX: 'auto' }}>
+      <div style={{ background: S.card, borderBottom: `1px solid ${S.border}`, display: 'flex', overflowX: 'auto', WebkitOverflowScrolling: 'touch' } as any}>
         {TABS.map(t => (
           <button key={t} onClick={() => setTab(t)} style={{ padding: '14px 18px', fontSize: 13, fontWeight: tab === t ? 600 : 400, color: tab === t ? S.text : S.text3, background: 'transparent', border: 'none', borderBottom: tab === t ? `2px solid ${S.blue}` : '2px solid transparent', cursor: 'pointer', textTransform: 'capitalize', whiteSpace: 'nowrap' }}>
             {t === 'bank' ? '🏦 Bank' : t === 'help' ? '❓ Help' : t.charAt(0).toUpperCase() + t.slice(1)}
@@ -407,8 +429,15 @@ export default function Home() {
             <Card style={{ padding: 16, marginBottom: 10 }}>
               <div style={{ display: 'flex', gap: 11, marginBottom: 12 }}>
                 <Av p={profile} size={36} />
-                <textarea value={draft} onChange={e => setDraft(e.target.value)} placeholder="what happened?" rows={3} autoFocus
-                  style={{ flex: 1, border: 'none', background: 'transparent', color: S.text, fontSize: 15, lineHeight: 1.6, resize: 'none', fontFamily: 'inherit', outline: 'none', direction: 'ltr', textAlign: 'left' }} />
+                <textarea
+                  value={draft}
+                  onChange={e => setDraft(e.target.value)}
+                  placeholder="what happened?"
+                  rows={3}
+                  autoFocus
+                  dir="ltr"
+                  style={{ flex: 1, border: 'none', background: 'transparent', color: S.text, fontSize: 16, lineHeight: 1.6, resize: 'none', fontFamily: 'inherit', outline: 'none', direction: 'ltr', unicodeBidi: 'plaintext', textAlign: 'left' } as any}
+                />
               </div>
               {postImage && (
                 <div style={{ marginBottom: 10, position: 'relative' }}>
@@ -529,13 +558,13 @@ export default function Home() {
 
         {tab === 'help' && <>
           {[
-            { title: '🔥 What is aura?', body: `Your score on this site. Post something, people vote on it, your aura goes up or down. Simple.` },
-            { title: '🗳️ Voting', body: `Vote +1 to +50 or negative on any post. Voting costs you a small amount of your own aura — sending +10 costs you 1, sending +50 costs you 5. Votes mean something.` },
-            { title: '📊 Profile votes', body: `You can vote on someone's whole profile, not just their posts. Tap their name or avatar anywhere to pull up their profile and rate their vibe.` },
-            { title: '🤡 Negative aura', body: `Drop below 0 and clown emojis start showing on your profile. You also only keep 75% of aura you earn while negative — the rest goes into the prize pool.` },
-            { title: '🏆 Prize pool', body: `Every Sunday at midnight, whoever has the highest-aura post that week wins the entire pool. The pool fills from the 25% tax on negative users.` },
-            { title: '🔥 Streaks', body: `Hit Check In every day for +5 aura. Miss a day and your streak resets to zero.` },
-            { title: '🚫 Glazing', body: `Max 3 big votes (+50 or -10) to the same person per 24 hours. Go over that and you get hit with -50. Don't glaze.` },
+            { title: '🔥 What is aura?', body: 'Your score on this site. Post something, people vote on it, your aura goes up or down. Simple.' },
+            { title: '🗳️ Voting', body: 'Vote +1 to +50 or negative on any post. Voting costs you a small amount of your own aura — sending +10 costs you 1, sending +50 costs you 5. Votes mean something.' },
+            { title: '📊 Profile votes', body: 'You can vote on someone\'s whole profile, not just their posts. Tap their name or avatar anywhere to pull up their profile and rate their vibe.' },
+            { title: '🤡 Negative aura', body: 'Drop below 0 and clown emojis start showing on your profile. You also only keep 75% of aura you earn while negative — the rest goes into the prize pool.' },
+            { title: '🏆 Prize pool', body: 'Every Sunday at midnight, whoever has the highest-aura post that week wins the entire pool. The pool fills from the 25% tax on negative users.' },
+            { title: '🔥 Streaks', body: 'Hit Check In every day for +5 aura. Miss a day and your streak resets to zero.' },
+            { title: '🚫 Glazing', body: 'Max 3 big votes (+50 or -10) to the same person per 24 hours. Go over that and you get hit with -50. Don\'t glaze.' },
           ].map(item => (
             <Card key={item.title} style={{ padding: 18, marginBottom: 10 }}>
               <div style={{ fontWeight: 600, fontSize: 15, color: S.text, marginBottom: 8 }}>{item.title}</div>
@@ -546,7 +575,21 @@ export default function Home() {
 
         {tab === 'profile' && <>
           <Card style={{ overflow: 'hidden', marginBottom: 10 }}>
-            <div style={{ height: 110, background: clownCount(profile.aura) > 0 ? `repeating-linear-gradient(45deg,${S.redDim} 0,${S.redDim} 12px,${S.card} 12px,${S.card} 24px)` : `linear-gradient(135deg, ${S.blueDim}, ${S.card})` }} />
+            <div style={{
+              height: 120,
+              background: clownCount(profile.aura) > 0
+                ? `repeating-linear-gradient(45deg,${S.redDim} 0,${S.redDim} 12px,${S.card} 12px,${S.card} 24px)`
+                : `linear-gradient(135deg, ${S.blueDim}, ${S.card})`,
+              backgroundImage: (profile as any).banner_url ? `url(${(profile as any).banner_url})` : undefined,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+              position: 'relative',
+            }}>
+              <label style={{ position: 'absolute', bottom: 10, right: 10, cursor: 'pointer', background: 'rgba(0,0,0,.6)', border: `1px solid ${S.border2}`, borderRadius: 8, padding: '5px 12px', fontSize: 12, color: '#fff', display: 'flex', alignItems: 'center', gap: 5 }}>
+                📷 Edit banner
+                <input ref={bannerRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleBannerUpload} />
+              </label>
+            </div>
             <div style={{ padding: '0 18px 22px', marginTop: -26 }}>
               <div style={{ position: 'relative', display: 'inline-block', marginBottom: 12 }}>
                 <Av p={profile} size={56} />
@@ -560,8 +603,14 @@ export default function Home() {
               <div style={{ margin: '10px 0 16px' }}>
                 {editingBio ? (
                   <div>
-                    <textarea value={bioText} onChange={e => setBioText(e.target.value)} placeholder="say something..." rows={2}
-                      style={{ width: '100%', border: `1px solid ${S.border2}`, borderRadius: 10, padding: '9px 12px', fontSize: 13, background: S.card2, color: S.text, lineHeight: 1.55, resize: 'none', fontFamily: 'inherit', outline: 'none', direction: 'ltr', textAlign: 'left' }} />
+                    <textarea
+                      value={bioText}
+                      onChange={e => setBioText(e.target.value)}
+                      placeholder="say something..."
+                      rows={2}
+                      dir="ltr"
+                      style={{ width: '100%', border: `1px solid ${S.border2}`, borderRadius: 10, padding: '9px 12px', fontSize: 14, background: S.card2, color: S.text, lineHeight: 1.55, resize: 'none', fontFamily: 'inherit', outline: 'none', direction: 'ltr', textAlign: 'left' } as any}
+                    />
                     <div style={{ display: 'flex', gap: 7, marginTop: 8 }}>
                       <button onClick={handleSaveBio} style={{ padding: '6px 16px', borderRadius: 9, fontSize: 12, fontWeight: 600, background: S.blue, color: '#fff', border: 'none', cursor: 'pointer' }}>Save</button>
                       <button onClick={() => setEditingBio(false)} style={{ padding: '6px 16px', borderRadius: 9, fontSize: 12, border: `1px solid ${S.border2}`, background: 'transparent', color: S.text2, cursor: 'pointer' }}>Cancel</button>
