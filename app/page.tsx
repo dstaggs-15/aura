@@ -1,68 +1,3 @@
-import Image from "next/image";
-
-export default function Home() {
-  return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
-  );
-}
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
@@ -72,6 +7,23 @@ const VOTE_OPTS = [-10, -5, -1, 1, 5, 10, 50]
 const VOTE_COST: Record<string, number> = { "50": 5, "10": 1, "5": .5, "1": .5, "-1": .5, "-5": .5, "-10": 1 }
 const fmtAura = (n: number) => (n >= 0 ? "+" : "") + n.toLocaleString()
 const clownCount = (a: number) => a < -499 ? 3 : a < -99 ? 2 : a < 0 ? 1 : 0
+
+const S = {
+  bg: '#0d0d0d',
+  card: '#161616',
+  card2: '#1e1e1e',
+  border: '#2a2a2a',
+  border2: '#333',
+  text: '#f0f0f0',
+  text2: '#888',
+  text3: '#555',
+  blue: '#3b82f6',
+  blueDim: '#1e3a5f',
+  red: '#ef4444',
+  redDim: '#3b1515',
+  green: '#22c55e',
+  fire: '#f97316',
+}
 
 export default function Home() {
   const [profile, setProfile] = useState<Profile | null>(null)
@@ -161,7 +113,7 @@ export default function Home() {
       }
       return p
     }))
-    notify(val > 0 ? `Sent +${val} aura (cost you ${cost})` : `Sent ${val} aura (cost you ${cost})`, val > 0 ? 'pos' : 'neg')
+    notify(val > 0 ? `+${val} aura sent` : `${val} aura sent`, val > 0 ? 'pos' : 'neg')
   }
 
   const handleProfileVote = async (targetId: string, val: number) => {
@@ -182,13 +134,13 @@ export default function Home() {
       if (modalProfile?.id === targetId) setModalProfile(mp => mp ? { ...mp, aura: newAura } : mp)
     }
     setProfileVotes(v => ({ ...v, [targetId]: val }))
-    notify(val > 0 ? `Gave +${val} to their profile` : `Gave ${val} to their profile`, val > 0 ? 'pos' : 'neg')
+    notify(val > 0 ? `+${val} to their profile` : `${val} to their profile`, val > 0 ? 'pos' : 'neg')
   }
 
   const handleCheckIn = async () => {
     if (!profile) return
     const today = new Date().toISOString().split('T')[0]
-    if (profile.last_checkin === today) { notify('Already checked in today!'); return }
+    if (profile.last_checkin === today) { notify('Already checked in today'); return }
     const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
     const newStreak = profile.last_checkin === yesterday ? profile.streak + 1 : 1
     const newAura = profile.aura + 5
@@ -201,7 +153,7 @@ export default function Home() {
   const handlePost = async () => {
     if (!draft.trim() || !profile) return
     const { data } = await supabase.from('posts').insert({ user_id: profile.id, text: draft.trim(), aura: 0 }).select('*, profiles(*)').single()
-    if (data) { setPosts(ps => [data, ...ps]); setDraft(''); setComposing(false); notify('Post dropped 🔥') }
+    if (data) { setPosts(ps => [data, ...ps]); setDraft(''); setComposing(false); notify('Posted 🔥') }
   }
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -214,7 +166,7 @@ export default function Home() {
     await supabase.from('profiles').update({ avatar_url: data.publicUrl }).eq('id', profile.id)
     setProfile(p => p ? { ...p, avatar_url: data.publicUrl } : p)
     setProfiles(ps => ps.map(p => p.id === profile.id ? { ...p, avatar_url: data.publicUrl } : p))
-    notify('Profile photo updated ✓', 'pos')
+    notify('Photo updated', 'pos')
   }
 
   const handleSaveBio = async () => {
@@ -223,7 +175,7 @@ export default function Home() {
     setProfile(p => p ? { ...p, bio: bioText } : p)
     setProfiles(ps => ps.map(p => p.id === profile.id ? { ...p, bio: bioText } : p))
     setEditingBio(false)
-    notify('Bio saved ✓', 'pos')
+    notify('Bio saved', 'pos')
   }
 
   const handleLogout = async () => {
@@ -236,18 +188,22 @@ export default function Home() {
   const topPostUser = topPost ? profiles.find(p => p.id === topPost.user_id) : null
   const sorted = [...posts].sort((a, b) => filter === 'trending' ? b.aura - a.aura : new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 
-  const AvatarComp = ({ p, size = 36 }: { p: Profile; size?: number }) => (
+  const Av = ({ p, size = 36 }: { p: Profile; size?: number }) => (
     <div style={{
       width: size, height: size, borderRadius: '50%', flexShrink: 0,
-      overflow: 'hidden', border: '1.5px solid #e8e8e8',
-      background: p.avatar_url ? 'transparent' : '#0a0a0a',
+      overflow: 'hidden', border: `1.5px solid ${S.border2}`,
+      background: p.avatar_url ? 'transparent' : S.blue,
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontSize: size * 0.33, fontWeight: 600, color: '#fff',
+      fontSize: size * 0.33, fontWeight: 700, color: '#fff', letterSpacing: -.5,
     }}>
       {p.avatar_url
         ? <img src={p.avatar_url} alt={p.username} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         : p.username.slice(0, 2).toUpperCase()}
     </div>
+  )
+
+  const Card = ({ children, style = {} }: any) => (
+    <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 16, ...style }}>{children}</div>
   )
 
   const PostCard = ({ post }: { post: Post }) => {
@@ -257,136 +213,148 @@ export default function Home() {
     const mv = myVotes[post.id]
     const cc = clownCount(owner.aura)
     const ago = Math.round((Date.now() - new Date(post.created_at).getTime()) / 60000)
-    const agoStr = ago < 60 ? `${ago}m ago` : `${Math.round(ago / 60)}h ago`
+    const agoStr = ago < 60 ? `${ago}m` : ago < 1440 ? `${Math.round(ago / 60)}h` : `${Math.round(ago / 1440)}d`
     return (
-      <div style={{ background: '#fff', border: '1px solid #e8e8e8', borderRadius: 14, marginBottom: 8, overflow: 'hidden' }}>
-        <div style={{ padding: '12px 14px 10px', display: 'flex', gap: 10 }}>
-          <div onClick={() => setModalProfile(owner)} style={{ cursor: 'pointer' }}>
-            <AvatarComp p={owner} size={38} />
+      <Card style={{ marginBottom: 8 }}>
+        <div style={{ padding: '14px 16px 12px', display: 'flex', gap: 11 }}>
+          <div onClick={() => setModalProfile(owner)} style={{ cursor: 'pointer', marginTop: 1 }}>
+            <Av p={owner} size={38} />
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 3 }}>
-              <span onClick={() => setModalProfile(owner)} style={{ fontWeight: 600, fontSize: 13, cursor: 'pointer', color: '#0a0a0a' }}>{owner.username}</span>
-              {cc > 0 && <span style={{ fontSize: 12 }}>{'🤡'.repeat(cc)}</span>}
-              {owner.streak >= 3 && <span style={{ fontSize: 11, color: '#f97316' }}>🔥{owner.streak}</span>}
-              <span style={{ fontSize: 11, color: '#999', marginLeft: 'auto' }}>{agoStr}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
+              <span onClick={() => setModalProfile(owner)} style={{ fontWeight: 600, fontSize: 14, cursor: 'pointer', color: S.text }}>{owner.username}</span>
+              {cc > 0 && <span style={{ fontSize: 13 }}>{'🤡'.repeat(cc)}</span>}
+              {owner.streak >= 3 && <span style={{ fontSize: 12, color: S.fire }}>🔥{owner.streak}</span>}
+              <span style={{ fontSize: 11, color: S.text3, marginLeft: 'auto' }}>{agoStr}</span>
             </div>
-            <p style={{ margin: 0, fontSize: 14, lineHeight: 1.55, color: '#0a0a0a' }}>{post.text}</p>
+            <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color: '#ccc' }}>{post.text}</p>
           </div>
         </div>
-        <div style={{ padding: '8px 14px', borderTop: '1px solid #f0f0f0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-          <span style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 600, color: post.aura >= 0 ? '#1d4ed8' : '#dc2626' }}>{fmtAura(post.aura)}</span>
+        <div style={{ padding: '10px 16px 12px', borderTop: `1px solid ${S.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+          <span style={{ fontFamily: 'monospace', fontSize: 14, fontWeight: 700, color: post.aura >= 0 ? S.blue : S.red }}>
+            {fmtAura(post.aura)}
+          </span>
           {isOwn
-            ? <span style={{ fontSize: 11, color: '#999' }}>your post</span>
+            ? <span style={{ fontSize: 11, color: S.text3 }}>your post</span>
             : <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                {VOTE_OPTS.map(v => (
-                  <button key={v} onClick={() => handleVote(post.id, v)} style={{
-                    padding: '3px 7px', borderRadius: 6, fontSize: 11, fontWeight: 600,
-                    fontFamily: 'monospace', cursor: 'pointer',
-                    border: mv === v ? 'none' : '1px solid #e8e8e8',
-                    background: mv === v ? (v < 0 ? '#dc2626' : '#1d4ed8') : '#f7f7f7',
-                    color: mv === v ? '#fff' : (v < 0 ? '#dc2626' : '#1d4ed8'),
-                  }}>{v > 0 ? `+${v}` : v}</button>
-                ))}
+                {VOTE_OPTS.map(v => {
+                  const active = mv === v
+                  const neg = v < 0
+                  return (
+                    <button key={v} onClick={() => handleVote(post.id, v)} style={{
+                      padding: '4px 8px', borderRadius: 7, fontSize: 11, fontWeight: 700,
+                      fontFamily: 'monospace', cursor: 'pointer', transition: 'all .1s',
+                      border: `1px solid ${active ? 'transparent' : S.border2}`,
+                      background: active ? (neg ? S.red : S.blue) : S.card2,
+                      color: active ? '#fff' : (neg ? S.red : S.blue),
+                    }}>{v > 0 ? `+${v}` : v}</button>
+                  )
+                })}
               </div>
           }
         </div>
-      </div>
+      </Card>
     )
   }
-
-  if (!profile) return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ fontSize: 40 }}>🔥</div>
-    </div>
-  )
 
   const getBadges = (p: Profile) => {
     const b = ['🌐 Joined']
     if (p.streak >= 7) b.push('🔥 Streaker')
+    if (p.streak >= 30) b.push('💀 Obsessed')
     if (p.aura >= 1000) b.push('⚡ Legendary')
+    if (p.aura >= 500) b.push('👑 Elite')
     if (p.aura < 0) b.push('🤡 ' + (clownCount(p.aura) === 1 ? 'Clown' : clownCount(p.aura) === 2 ? 'Big Clown' : 'Mega Clown'))
     return b
   }
 
+  if (!profile) return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: S.bg }}>
+      <div style={{ fontSize: 40 }}>🔥</div>
+    </div>
+  )
+
+  const TABS = ['feed', 'leaderboard', 'bank', 'help']
+
   return (
-    <div style={{ minHeight: '100vh', background: '#f7f7f7', fontFamily: "'DM Sans', sans-serif" }}>
+    <div style={{ minHeight: '100vh', background: S.bg, fontFamily: "'Outfit', sans-serif", color: S.text }}>
       <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        @keyframes toastIn { from { opacity:0; transform:translateX(-50%) translateY(-8px) } to { opacity:1; transform:translateX(-50%) translateY(0) } }
-        @media(prefers-color-scheme:dark) {
-          body { background: #111 !important; }
-          .dc { background: #1a1a1a !important; border-color: #2a2a2a !important; }
-          .dt { color: #f0f0f0 !important; }
-          .ds { color: #888 !important; }
-          .db { background: #111 !important; }
-          .di { background: #1a1a1a !important; border-color: #333 !important; color: #f0f0f0 !important; }
-        }
+        @keyframes toastIn { from { opacity:0; transform:translateX(-50%) translateY(-10px) } to { opacity:1; transform:translateX(-50%) translateY(0) } }
+        ::-webkit-scrollbar { width: 4px; }
+        ::-webkit-scrollbar-track { background: ${S.bg}; }
+        ::-webkit-scrollbar-thumb { background: ${S.border2}; border-radius: 4px; }
+        textarea:focus { outline: none; }
+        input:focus { outline: none; }
       `}</style>
 
       {toast && (
         <div style={{
-          position: 'fixed', top: 14, left: '50%', zIndex: 999, pointerEvents: 'none',
-          transform: 'translateX(-50%)', animation: 'toastIn .18s ease',
-          background: toast.type === 'pos' ? '#1d4ed8' : toast.type === 'neg' ? '#dc2626' : '#0a0a0a',
-          color: '#fff', padding: '9px 18px', borderRadius: 99, fontSize: 13,
-          fontWeight: 500, whiteSpace: 'nowrap', boxShadow: '0 4px 16px rgba(0,0,0,.15)'
+          position: 'fixed', top: 16, left: '50%', zIndex: 999, pointerEvents: 'none',
+          transform: 'translateX(-50%)', animation: 'toastIn .2s ease',
+          background: toast.type === 'pos' ? S.blue : toast.type === 'neg' ? S.red : '#222',
+          color: '#fff', padding: '9px 20px', borderRadius: 99, fontSize: 13,
+          fontWeight: 500, whiteSpace: 'nowrap', border: `1px solid ${toast.type === 'pos' ? '#60a5fa' : toast.type === 'neg' ? '#f87171' : '#444'}`
         }}>{toast.msg}</div>
       )}
 
+      {/* Profile Modal */}
       {modalProfile && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.55)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 }}
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.7)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, backdropFilter: 'blur(4px)' }}
           onClick={() => { setModalProfile(null); setEditingBio(false) }}>
-          <div className="dc" onClick={e => e.stopPropagation()} style={{ background: '#fff', border: '1px solid #e8e8e8', borderRadius: 20, width: '100%', maxWidth: 440, maxHeight: '88vh', overflowY: 'auto' }}>
-            <div style={{ height: 80, background: clownCount(modalProfile.aura) > 0 ? 'repeating-linear-gradient(45deg,#fef2f2 0,#fef2f2 10px,#fff 10px,#fff 20px)' : '#f7f7f7', position: 'relative', borderRadius: '20px 20px 0 0' }}>
-              <button onClick={() => setModalProfile(null)} style={{ position: 'absolute', top: 12, right: 12, width: 30, height: 30, borderRadius: '50%', background: '#fff', border: '1px solid #e8e8e8', cursor: 'pointer', fontSize: 13, color: '#666' }}>✕</button>
+          <div onClick={e => e.stopPropagation()} style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 20, width: '100%', maxWidth: 440, maxHeight: '88vh', overflowY: 'auto' }}>
+            <div style={{ height: 90, background: clownCount(modalProfile.aura) > 0 ? `repeating-linear-gradient(45deg,${S.redDim} 0,${S.redDim} 12px,${S.card} 12px,${S.card} 24px)` : `linear-gradient(135deg, ${S.blueDim}, ${S.card})`, borderRadius: '20px 20px 0 0', position: 'relative' }}>
+              <button onClick={() => setModalProfile(null)} style={{ position: 'absolute', top: 12, right: 12, width: 30, height: 30, borderRadius: '50%', background: 'rgba(0,0,0,.4)', border: `1px solid ${S.border2}`, cursor: 'pointer', fontSize: 14, color: S.text2 }}>✕</button>
             </div>
-            <div style={{ padding: '0 20px 24px', marginTop: -24 }}>
-              <AvatarComp p={modalProfile} size={52} />
-              <div className="dt" style={{ marginTop: 10, marginBottom: 4, fontWeight: 600, fontSize: 18, color: '#0a0a0a' }}>
+            <div style={{ padding: '0 20px 24px', marginTop: -22 }}>
+              <Av p={modalProfile} size={54} />
+              <div style={{ marginTop: 10, marginBottom: 2, fontWeight: 700, fontSize: 20, color: S.text, letterSpacing: -.3 }}>
                 {modalProfile.username} {clownCount(modalProfile.aura) > 0 && '🤡'.repeat(clownCount(modalProfile.aura))}
               </div>
-              {modalProfile.bio && <p className="ds" style={{ fontSize: 13, color: '#666', marginBottom: 10, lineHeight: 1.5 }}>{modalProfile.bio}</p>}
-              <div style={{ display: 'flex', gap: 20, margin: '12px 0' }}>
+              {modalProfile.bio && <p style={{ fontSize: 13, color: S.text2, marginBottom: 14, lineHeight: 1.55 }}>{modalProfile.bio}</p>}
+              <div style={{ display: 'flex', gap: 24, margin: '14px 0' }}>
                 {[
-                  { label: 'AURA', val: fmtAura(modalProfile.aura), color: modalProfile.aura >= 0 ? '#1d4ed8' : '#dc2626' },
-                  { label: 'STREAK', val: `🔥${modalProfile.streak}`, color: '#0a0a0a' },
-                  { label: 'POSTS', val: posts.filter(p => p.user_id === modalProfile.id).length, color: '#0a0a0a' },
+                  { label: 'Aura', val: fmtAura(modalProfile.aura), color: modalProfile.aura >= 0 ? S.blue : S.red },
+                  { label: 'Streak', val: `🔥${modalProfile.streak}`, color: S.text },
+                  { label: 'Posts', val: posts.filter(p => p.user_id === modalProfile.id).length, color: S.text },
                 ].map(s => (
                   <div key={s.label}>
-                    <div className="dt" style={{ fontFamily: 'monospace', fontSize: 18, fontWeight: 600, color: s.color }}>{s.val}</div>
-                    <div style={{ fontSize: 10, color: '#999', textTransform: 'uppercase', letterSpacing: 1 }}>{s.label}</div>
+                    <div style={{ fontFamily: 'monospace', fontSize: 20, fontWeight: 700, color: s.color }}>{s.val}</div>
+                    <div style={{ fontSize: 11, color: S.text3, marginTop: 2 }}>{s.label}</div>
                   </div>
                 ))}
               </div>
               {modalProfile.id !== profile.id && (
                 <div style={{ marginBottom: 16 }}>
-                  <div style={{ fontSize: 11, color: '#999', marginBottom: 6, textTransform: 'uppercase', letterSpacing: 1 }}>Vote on their vibe</div>
-                  <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+                  <div style={{ fontSize: 11, color: S.text3, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>Rate their vibe</div>
+                  <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
                     {VOTE_OPTS.map(v => {
                       const active = profileVotes[modalProfile.id] === v
+                      const neg = v < 0
                       return (
                         <button key={v} onClick={() => handleProfileVote(modalProfile.id, v)} style={{
-                          padding: '4px 8px', borderRadius: 6, fontSize: 11, fontWeight: 600,
+                          padding: '5px 9px', borderRadius: 7, fontSize: 11, fontWeight: 700,
                           fontFamily: 'monospace', cursor: 'pointer',
-                          border: active ? 'none' : '1px solid #e8e8e8',
-                          background: active ? (v < 0 ? '#dc2626' : '#1d4ed8') : '#f7f7f7',
-                          color: active ? '#fff' : (v < 0 ? '#dc2626' : '#1d4ed8'),
+                          border: `1px solid ${active ? 'transparent' : S.border2}`,
+                          background: active ? (neg ? S.red : S.blue) : S.card2,
+                          color: active ? '#fff' : (neg ? S.red : S.blue),
                         }}>{v > 0 ? `+${v}` : v}</button>
                       )
                     })}
                   </div>
                 </div>
               )}
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
-                {getBadges(modalProfile).map(b => <span key={b} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 20, background: '#f0f0f0', border: '1px solid #e8e8e8', color: '#555' }}>{b}</span>)}
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 18 }}>
+                {getBadges(modalProfile).map(b => (
+                  <span key={b} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 20, background: S.card2, border: `1px solid ${S.border2}`, color: S.text2 }}>{b}</span>
+                ))}
               </div>
-              <div style={{ fontSize: 11, color: '#999', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>Posts</div>
+              <div style={{ fontSize: 11, color: S.text3, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>Posts</div>
+              {posts.filter(p => p.user_id === modalProfile.id).length === 0 && <p style={{ fontSize: 13, color: S.text3 }}>No posts yet.</p>}
               {posts.filter(p => p.user_id === modalProfile.id).map(p => (
-                <div key={p.id} className="dc" style={{ background: '#f7f7f7', borderRadius: 10, padding: '10px 12px', marginBottom: 7 }}>
-                  <p className="dt" style={{ fontSize: 13, color: '#0a0a0a', marginBottom: 5, lineHeight: 1.5 }}>{p.text}</p>
-                  <span style={{ fontFamily: 'monospace', fontSize: 12, fontWeight: 600, color: p.aura >= 0 ? '#1d4ed8' : '#dc2626' }}>{fmtAura(p.aura)}</span>
+                <div key={p.id} style={{ background: S.card2, borderRadius: 10, padding: '10px 13px', marginBottom: 8 }}>
+                  <p style={{ fontSize: 13, color: '#ccc', marginBottom: 6, lineHeight: 1.5 }}>{p.text}</p>
+                  <span style={{ fontFamily: 'monospace', fontSize: 12, fontWeight: 700, color: p.aura >= 0 ? S.blue : S.red }}>{fmtAura(p.aura)}</span>
                 </div>
               ))}
             </div>
@@ -394,206 +362,275 @@ export default function Home() {
         </div>
       )}
 
-      <div className="dc db" style={{ position: 'sticky', top: 0, zIndex: 50, background: '#fff', borderBottom: '1px solid #e8e8e8', padding: '0 16px', height: 54, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ fontSize: 20 }}>🔥</span>
-          <span className="dt" style={{ fontWeight: 600, fontSize: 17, letterSpacing: -.3, color: '#0a0a0a' }}>aura</span>
+      {/* Header */}
+      <div style={{ position: 'sticky', top: 0, zIndex: 50, background: 'rgba(13,13,13,.95)', borderBottom: `1px solid ${S.border}`, padding: '0 16px', height: 56, display: 'flex', alignItems: 'center', justifyContent: 'space-between', backdropFilter: 'blur(10px)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          <span style={{ fontSize: 22 }}>🔥</span>
+          <span style={{ fontWeight: 700, fontSize: 20, letterSpacing: -.5, color: S.text }}>aura</span>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 600, color: profile.aura >= 0 ? '#1d4ed8' : '#dc2626' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontFamily: 'monospace', fontSize: 14, fontWeight: 700, color: profile.aura >= 0 ? S.blue : S.red }}>
             {clownCount(profile.aura) > 0 ? '🤡 ' : ''}{fmtAura(profile.aura)}
           </span>
-          <button onClick={handleCheckIn} disabled={checkedInToday} style={{ padding: '6px 13px', borderRadius: 20, fontSize: 12, fontWeight: 600, border: '1px solid #e8e8e8', cursor: checkedInToday ? 'default' : 'pointer', background: checkedInToday ? '#f7f7f7' : '#0a0a0a', color: checkedInToday ? '#999' : '#fff' }}>
+          <button onClick={handleCheckIn} disabled={checkedInToday} style={{
+            padding: '7px 14px', borderRadius: 20, fontSize: 12, fontWeight: 600,
+            border: `1px solid ${checkedInToday ? S.border : S.blue}`,
+            cursor: checkedInToday ? 'default' : 'pointer',
+            background: checkedInToday ? 'transparent' : S.blue,
+            color: checkedInToday ? S.text3 : '#fff',
+          }}>
             {checkedInToday ? '✓ Checked in' : '🔥 Check in'}
           </button>
-          <button onClick={handleLogout} style={{ fontSize: 12, color: '#999', background: 'none', border: 'none', cursor: 'pointer' }}>Out</button>
+          <button onClick={handleLogout} style={{ fontSize: 12, color: S.text3, background: 'none', border: 'none', cursor: 'pointer' }}>Log out</button>
         </div>
       </div>
 
-      <div className="dc db" style={{ background: '#fff', borderBottom: '1px solid #e8e8e8', padding: '7px 16px', display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#888', flexWrap: 'wrap' }}>
-        <span>🏆 Prize pool:</span>
-        <span className="dt" style={{ fontFamily: 'monospace', fontWeight: 600, color: '#0a0a0a' }}>{taxBucket.toFixed(1)} aura</span>
-        <span style={{ color: '#ddd' }}>·</span>
-        <span>Top post wins Sunday</span>
-        {topPostUser && <><span style={{ color: '#ddd' }}>·</span><span className="dt" style={{ color: '#0a0a0a' }}>👑 {topPostUser.username} leading</span></>}
+      {/* Prize bar */}
+      <div style={{ background: S.card, borderBottom: `1px solid ${S.border}`, padding: '8px 16px', display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: S.text2, flexWrap: 'wrap' }}>
+        <span>🏆</span>
+        <span style={{ fontFamily: 'monospace', fontWeight: 700, color: S.text }}>{taxBucket.toFixed(1)} aura</span>
+        <span style={{ color: S.border2 }}>·</span>
+        <span>in the prize pool</span>
+        <span style={{ color: S.border2 }}>·</span>
+        <span>top post wins Sunday</span>
+        {topPostUser && <><span style={{ color: S.border2 }}>·</span><span style={{ color: S.blue }}>👑 {topPostUser.username} leading</span></>}
       </div>
 
-      <div className="dc db" style={{ background: '#fff', borderBottom: '1px solid #e8e8e8', display: 'flex', overflowX: 'auto' }}>
-        {['feed', 'leaderboard', 'bank', 'profile'].map(t => (
-          <button key={t} onClick={() => setTab(t)} className="db" style={{ padding: '13px 16px', fontSize: 13, fontWeight: tab === t ? 600 : 400, color: tab === t ? '#0a0a0a' : '#999', background: 'transparent', borderBottom: tab === t ? '2px solid #0a0a0a' : '2px solid transparent', cursor: 'pointer', whiteSpace: 'nowrap', textTransform: 'capitalize' }}>
-            {t === 'bank' ? '🏦 bank' : t}
+      {/* Nav */}
+      <div style={{ background: S.card, borderBottom: `1px solid ${S.border}`, display: 'flex' }}>
+        {TABS.map(t => (
+          <button key={t} onClick={() => setTab(t)} style={{
+            padding: '14px 18px', fontSize: 13, fontWeight: tab === t ? 600 : 400,
+            color: tab === t ? S.text : S.text3,
+            background: 'transparent', border: 'none',
+            borderBottom: tab === t ? `2px solid ${S.blue}` : '2px solid transparent',
+            cursor: 'pointer', textTransform: 'capitalize', transition: 'color .15s',
+            whiteSpace: 'nowrap',
+          }}>
+            {t === 'bank' ? '🏦 Bank' : t === 'help' ? '❓ Help' : t.charAt(0).toUpperCase() + t.slice(1)}
           </button>
         ))}
       </div>
 
-      <div style={{ maxWidth: 580, margin: '0 auto', padding: 12 }}>
+      <div style={{ maxWidth: 600, margin: '0 auto', padding: 14 }}>
 
+        {/* FEED */}
         {tab === 'feed' && <>
           {composing ? (
-            <div className="dc" style={{ background: '#fff', border: '1px solid #e8e8e8', borderRadius: 14, padding: 14, marginBottom: 10 }}>
-              <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
-                <AvatarComp p={profile} size={36} />
-                <textarea value={draft} onChange={e => setDraft(e.target.value)} placeholder="what happened today?" rows={3}
-                  style={{ flex: 1, border: 'none', outline: 'none', fontSize: 14, background: 'transparent', color: '#0a0a0a', lineHeight: 1.55, resize: 'none', fontFamily: 'inherit' }} />
+            <Card style={{ padding: 16, marginBottom: 10 }}>
+              <div style={{ display: 'flex', gap: 11, marginBottom: 12 }}>
+                <Av p={profile} size={36} />
+                <textarea value={draft} onChange={e => setDraft(e.target.value)} placeholder="what happened?" rows={3}
+                  style={{ flex: 1, border: 'none', background: 'transparent', color: S.text, fontSize: 15, lineHeight: 1.6, resize: 'none', fontFamily: 'inherit' }} autoFocus />
               </div>
               <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                <button onClick={() => { setComposing(false); setDraft('') }} style={{ padding: '6px 14px', borderRadius: 8, fontSize: 13, border: '1px solid #e8e8e8', background: 'transparent', color: '#666', cursor: 'pointer' }}>Cancel</button>
-                <button onClick={handlePost} disabled={!draft.trim()} style={{ padding: '6px 16px', borderRadius: 8, fontSize: 13, fontWeight: 600, border: 'none', background: draft.trim() ? '#0a0a0a' : '#e8e8e8', color: draft.trim() ? '#fff' : '#999', cursor: draft.trim() ? 'pointer' : 'default' }}>Post</button>
+                <button onClick={() => { setComposing(false); setDraft('') }} style={{ padding: '7px 16px', borderRadius: 10, fontSize: 13, border: `1px solid ${S.border2}`, background: 'transparent', color: S.text2, cursor: 'pointer' }}>Cancel</button>
+                <button onClick={handlePost} disabled={!draft.trim()} style={{ padding: '7px 18px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: 'none', background: draft.trim() ? S.blue : S.border, color: draft.trim() ? '#fff' : S.text3, cursor: draft.trim() ? 'pointer' : 'default' }}>Post</button>
               </div>
-            </div>
+            </Card>
           ) : (
-            <button onClick={() => setComposing(true)} className="dc" style={{ width: '100%', background: '#fff', border: '1px solid #e8e8e8', borderRadius: 14, padding: '12px 14px', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
-              <AvatarComp p={profile} size={32} />
-              <span style={{ fontSize: 14, color: '#999' }}>what happened today? 🔥</span>
+            <button onClick={() => setComposing(true)} style={{
+              width: '100%', background: S.card, border: `1px solid ${S.border}`, borderRadius: 16,
+              padding: '13px 16px', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 11, cursor: 'pointer', textAlign: 'left'
+            }}>
+              <Av p={profile} size={34} />
+              <span style={{ fontSize: 14, color: S.text3 }}>what happened today? 🔥</span>
             </button>
           )}
-          <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+          <div style={{ display: 'flex', gap: 7, marginBottom: 14 }}>
             {['recent', 'trending'].map(f => (
-              <button key={f} onClick={() => setFilter(f)} style={{ padding: '5px 14px', borderRadius: 20, fontSize: 12, fontWeight: 500, border: '1px solid #e8e8e8', cursor: 'pointer', background: filter === f ? '#0a0a0a' : '#fff', color: filter === f ? '#fff' : '#666' }}>
-                {f === 'trending' ? '🔥 Trending' : 'Recent'}
-              </button>
+              <button key={f} onClick={() => setFilter(f)} style={{
+                padding: '6px 16px', borderRadius: 20, fontSize: 12, fontWeight: 500,
+                border: `1px solid ${filter === f ? S.blue : S.border2}`,
+                background: filter === f ? S.blueDim : 'transparent',
+                color: filter === f ? S.blue : S.text2, cursor: 'pointer',
+              }}>{f === 'trending' ? '🔥 Trending' : 'Recent'}</button>
             ))}
           </div>
+          {sorted.length === 0 && <p style={{ color: S.text3, fontSize: 14, textAlign: 'center', padding: '40px 0' }}>No posts yet. Be the first 👆</p>}
           {sorted.map(p => <PostCard key={p.id} post={p} />)}
         </>}
 
+        {/* LEADERBOARD */}
         {tab === 'leaderboard' && <>
-          <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+          <div style={{ display: 'flex', gap: 7, marginBottom: 14 }}>
             {['people', 'posts'].map(t => (
-              <button key={t} onClick={() => setLbTab(t)} style={{ padding: '5px 14px', borderRadius: 20, fontSize: 12, fontWeight: 500, border: '1px solid #e8e8e8', cursor: 'pointer', background: lbTab === t ? '#0a0a0a' : '#fff', color: lbTab === t ? '#fff' : '#666' }}>
-                {t === 'posts' ? '🔥 Posts' : '👤 People'}
-              </button>
+              <button key={t} onClick={() => setLbTab(t)} style={{
+                padding: '6px 16px', borderRadius: 20, fontSize: 12, fontWeight: 500,
+                border: `1px solid ${lbTab === t ? S.blue : S.border2}`,
+                background: lbTab === t ? S.blueDim : 'transparent',
+                color: lbTab === t ? S.blue : S.text2, cursor: 'pointer',
+              }}>{t === 'posts' ? '🔥 Posts' : '👤 People'}</button>
             ))}
           </div>
           {lbTab === 'people' && [...profiles].sort((a, b) => b.aura - a.aura).map((u, i) => {
-            const rankColor = i === 0 ? '#d97706' : i === 1 ? '#64748b' : i === 2 ? '#c2603c' : '#999'
+            const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null
             const cc = clownCount(u.aura)
             return (
-              <div key={u.id} onClick={() => setModalProfile(u)} className="dc" style={{ background: '#fff', border: u.id === profile.id ? '1.5px solid #1d4ed8' : '1px solid #e8e8e8', borderRadius: 12, padding: '11px 14px', marginBottom: 7, display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
-                <div style={{ width: 26, height: 26, borderRadius: '50%', background: rankColor + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: rankColor, flexShrink: 0 }}>{i + 1}</div>
-                <AvatarComp p={u} size={36} />
+              <Card key={u.id} style={{ padding: '13px 16px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', border: u.id === profile.id ? `1px solid ${S.blue}` : `1px solid ${S.border}` }}
+                onClick={() => setModalProfile(u)}>
+                <div style={{ width: 28, textAlign: 'center', fontSize: medal ? 18 : 13, color: S.text3, fontWeight: 700, flexShrink: 0 }}>{medal || i + 1}</div>
+                <Av p={u} size={38} />
                 <div style={{ flex: 1 }}>
-                  <div className="dt" style={{ fontWeight: 600, fontSize: 13, color: '#0a0a0a', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14, color: S.text, display: 'flex', alignItems: 'center', gap: 6 }}>
                     {u.username}
-                    {u.id === profile.id && <span style={{ fontSize: 10, color: '#1d4ed8' }}>you</span>}
-                    {cc > 0 && <span style={{ fontSize: 11 }}>{'🤡'.repeat(cc)}</span>}
+                    {u.id === profile.id && <span style={{ fontSize: 10, color: S.blue, fontWeight: 500, background: S.blueDim, padding: '1px 6px', borderRadius: 4 }}>you</span>}
+                    {cc > 0 && <span>{'🤡'.repeat(cc)}</span>}
                   </div>
-                  <div style={{ fontSize: 11, color: '#999' }}>🔥 {u.streak} day streak</div>
+                  <div style={{ fontSize: 11, color: S.text3, marginTop: 2 }}>🔥 {u.streak} day streak</div>
                 </div>
-                <div style={{ fontFamily: 'monospace', fontSize: 15, fontWeight: 600, color: u.aura >= 0 ? '#1d4ed8' : '#dc2626' }}>{fmtAura(u.aura)}</div>
-              </div>
+                <div style={{ fontFamily: 'monospace', fontSize: 15, fontWeight: 700, color: u.aura >= 0 ? S.blue : S.red }}>{fmtAura(u.aura)}</div>
+              </Card>
             )
           })}
           {lbTab === 'posts' && [...posts].sort((a, b) => b.aura - a.aura).map((p, i) => {
             const owner = profiles.find(u => u.id === p.user_id)
             if (!owner) return null
-            const rankColor = i === 0 ? '#d97706' : i === 1 ? '#64748b' : i === 2 ? '#c2603c' : '#999'
+            const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null
             return (
-              <div key={p.id} className="dc" style={{ background: '#fff', border: '1px solid #e8e8e8', borderRadius: 12, padding: '11px 14px', marginBottom: 7, display: 'flex', gap: 10, alignItems: 'center' }}>
-                <div style={{ width: 26, height: 26, borderRadius: '50%', background: rankColor + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700, color: rankColor, flexShrink: 0 }}>{i + 1}</div>
+              <Card key={p.id} style={{ padding: '13px 16px', marginBottom: 8, display: 'flex', gap: 12, alignItems: 'center' }}>
+                <div style={{ width: 28, textAlign: 'center', fontSize: medal ? 18 : 13, color: S.text3, fontWeight: 700, flexShrink: 0 }}>{medal || i + 1}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <p className="dt" style={{ fontSize: 13, color: '#0a0a0a', marginBottom: 5, lineHeight: 1.45 }}>{p.text}</p>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <AvatarComp p={owner} size={16} />
-                    <span style={{ fontSize: 11, color: '#999' }}>{owner.username}</span>
+                  <p style={{ fontSize: 14, color: '#ccc', marginBottom: 7, lineHeight: 1.5 }}>{p.text}</p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                    <Av p={owner} size={18} />
+                    <span style={{ fontSize: 12, color: S.text2 }}>{owner.username}</span>
+                    <span style={{ fontSize: 11, color: S.text3 }}>· {Math.round((Date.now() - new Date(p.created_at).getTime()) / 3600000)}h ago</span>
                   </div>
                 </div>
-                <div style={{ fontFamily: 'monospace', fontSize: 14, fontWeight: 600, color: p.aura >= 0 ? '#1d4ed8' : '#dc2626', flexShrink: 0 }}>{fmtAura(p.aura)}</div>
-              </div>
+                <div style={{ fontFamily: 'monospace', fontSize: 14, fontWeight: 700, color: p.aura >= 0 ? S.blue : S.red, flexShrink: 0 }}>{fmtAura(p.aura)}</div>
+              </Card>
             )
           })}
         </>}
 
+        {/* BANK */}
         {tab === 'bank' && <>
-          <div className="dc" style={{ background: '#fff', border: '1px solid #e8e8e8', borderRadius: 16, padding: 24, marginBottom: 10, textAlign: 'center' }}>
-            <div style={{ fontSize: 11, color: '#999', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 6 }}>🏆 Weekly Prize Pool</div>
-            <div className="dt" style={{ fontFamily: 'monospace', fontSize: 42, fontWeight: 500, color: '#0a0a0a', margin: '6px 0 2px' }}>{taxBucket.toFixed(1)}</div>
-            <div style={{ fontSize: 12, color: '#999' }}>aura points · resets Sunday midnight</div>
+          <Card style={{ padding: 24, marginBottom: 10, textAlign: 'center' }}>
+            <div style={{ fontSize: 11, color: S.text3, textTransform: 'uppercase', letterSpacing: 2, marginBottom: 8 }}>Weekly Prize Pool</div>
+            <div style={{ fontFamily: 'monospace', fontSize: 48, fontWeight: 700, color: S.blue, margin: '4px 0' }}>{taxBucket.toFixed(1)}</div>
+            <div style={{ fontSize: 13, color: S.text2 }}>aura points · resets Sunday midnight</div>
             {topPost && topPostUser && (
-              <div style={{ background: '#f7f7f7', borderRadius: 10, padding: 12, marginTop: 14, textAlign: 'left' }}>
-                <div style={{ fontSize: 11, color: '#999', marginBottom: 6 }}>👑 Currently leading</div>
-                <p style={{ fontSize: 13, color: '#0a0a0a', marginBottom: 6, lineHeight: 1.5 }}>{topPost.text}</p>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <AvatarComp p={topPostUser} size={18} />
-                  <span style={{ fontSize: 12, color: '#666' }}>{topPostUser.username}</span>
-                  <span style={{ fontFamily: 'monospace', fontSize: 12, fontWeight: 600, color: '#1d4ed8', marginLeft: 'auto' }}>{fmtAura(topPost.aura)}</span>
+              <div style={{ background: S.card2, borderRadius: 12, padding: '12px 14px', marginTop: 16, textAlign: 'left' }}>
+                <div style={{ fontSize: 11, color: S.text3, marginBottom: 7, textTransform: 'uppercase', letterSpacing: 1 }}>👑 Leading post</div>
+                <p style={{ fontSize: 14, color: '#ccc', marginBottom: 8, lineHeight: 1.5 }}>{topPost.text}</p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Av p={topPostUser} size={20} />
+                  <span style={{ fontSize: 12, color: S.text2 }}>{topPostUser.username}</span>
+                  <span style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 700, color: S.blue, marginLeft: 'auto' }}>{fmtAura(topPost.aura)}</span>
                 </div>
               </div>
             )}
-          </div>
-          <div className="dc" style={{ background: '#fff', border: '1px solid #e8e8e8', borderRadius: 14, padding: 16, marginBottom: 10 }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: '#999', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>Economy</div>
+          </Card>
+          <Card style={{ padding: 20, marginBottom: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: S.text3, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 14 }}>Economy Stats</div>
             {[
               ['Total aura in circulation', fmtAura(profiles.reduce((s, u) => s + u.aura, 0))],
-              ['Users in clown mode 🤡', profiles.filter(u => u.aura < 0).length],
-              ['Negative user tax rate', '25%'],
+              ['Users in clown mode', `${profiles.filter(u => u.aura < 0).length} 🤡`],
+              ['Tax rate on negative users', '25%'],
               ['Daily check-in reward', '+5 🔥'],
-              ['Glaze detection limit', '3 max votes / 24h'],
+              ['Cost to send +50 vote', '5 aura'],
             ].map(([label, val]) => (
-              <div key={label as string} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 0', borderBottom: '1px solid #f0f0f0' }}>
-                <span className="ds" style={{ fontSize: 13, color: '#666' }}>{label}</span>
-                <span className="dt" style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 500, color: '#0a0a0a' }}>{val}</span>
+              <div key={label as string} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: `1px solid ${S.border}` }}>
+                <span style={{ fontSize: 13, color: S.text2 }}>{label}</span>
+                <span style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 600, color: S.text }}>{val}</span>
               </div>
             ))}
-          </div>
-          <div className="dc" style={{ background: '#fff', border: '1px solid #e8e8e8', borderRadius: 14, padding: 16 }}>
-            <div style={{ fontSize: 11, fontWeight: 600, color: '#999', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>How the tax works</div>
-            <p className="ds" style={{ fontSize: 13, color: '#666', lineHeight: 1.65 }}>
-              When a user has negative aura, they only keep <strong style={{ color: '#0a0a0a' }}>75%</strong> of points earned. The other <strong style={{ color: '#0a0a0a' }}>25%</strong> goes into this prize pool. Every Sunday at midnight, whoever has the highest-aura post that week wins the entire pool.
-            </p>
-          </div>
+          </Card>
         </>}
 
+        {/* HELP */}
+        {tab === 'help' && <>
+          {[
+            {
+              title: '🔥 What is aura?',
+              body: `Aura is your score on this site. Every post you make can be voted on by others — you gain or lose aura based on those votes. It's basically the community rating your vibe.`
+            },
+            {
+              title: '🗳️ How voting works',
+              body: `You can vote +1, +5, +10, or +50 on any post (or negative versions of those). Voting costs you a small amount of your own aura — sending +10 costs you 1, sending +50 costs you 5. So votes actually mean something.`
+            },
+            {
+              title: '📊 Profile votes',
+              body: `You can also vote on someone's profile directly — not just their posts. Tap their name or avatar anywhere on the site to pull up their profile, then rate their overall vibe.`
+            },
+            {
+              title: '🤡 Negative aura',
+              body: `If your aura drops below 0, clown emojis start showing up on your profile. The lower you go, the more clowns. You also only keep 75% of aura you earn while negative — the other 25% goes into the prize pool.`
+            },
+            {
+              title: '🏆 Weekly prize pool',
+              body: `Every Sunday at midnight, whoever has the highest-aura post that week wins the entire prize pool. The pool fills up from the 25% tax on negative users' earnings.`
+            },
+            {
+              title: '🔥 Check-in streak',
+              body: `Hit "Check in" every day for +5 aura. Miss a day and your streak resets to zero. Your streak shows on your profile — flex it.`
+            },
+            {
+              title: '🚫 Glaze rule',
+              body: `You can't send more than 3 maximum votes (+50 or -10) to the same person within 24 hours. If you try to, you get hit with a -50 penalty. Don't be a glazer.`
+            },
+          ].map(item => (
+            <Card key={item.title} style={{ padding: 18, marginBottom: 10 }}>
+              <div style={{ fontWeight: 600, fontSize: 15, color: S.text, marginBottom: 8 }}>{item.title}</div>
+              <p style={{ fontSize: 14, color: S.text2, lineHeight: 1.65 }}>{item.body}</p>
+            </Card>
+          ))}
+        </>}
+
+        {/* PROFILE */}
         {tab === 'profile' && <>
-          <div className="dc" style={{ background: '#fff', border: '1px solid #e8e8e8', borderRadius: 16, overflow: 'hidden', marginBottom: 10 }}>
-            <div style={{ height: 100, background: clownCount(profile.aura) > 0 ? 'repeating-linear-gradient(45deg,#fef2f2 0,#fef2f2 10px,#fff 10px,#fff 20px)' : 'linear-gradient(135deg,#f0f0f0,#e8e8e8)' }} />
-            <div style={{ padding: '0 16px 20px', marginTop: -26 }}>
-              <div style={{ position: 'relative', display: 'inline-block', marginBottom: 10 }}>
-                <AvatarComp p={profile} size={52} />
-                <label style={{ position: 'absolute', bottom: 0, right: -2, width: 20, height: 20, borderRadius: '50%', background: '#fff', border: '1px solid #e8e8e8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, cursor: 'pointer' }}>
+          <Card style={{ overflow: 'hidden', marginBottom: 10 }}>
+            <div style={{ height: 110, background: clownCount(profile.aura) > 0 ? `repeating-linear-gradient(45deg,${S.redDim} 0,${S.redDim} 12px,${S.card} 12px,${S.card} 24px)` : `linear-gradient(135deg, ${S.blueDim}, ${S.card})` }} />
+            <div style={{ padding: '0 18px 22px', marginTop: -26 }}>
+              <div style={{ position: 'relative', display: 'inline-block', marginBottom: 12 }}>
+                <Av p={profile} size={56} />
+                <label style={{ position: 'absolute', bottom: 0, right: -3, width: 22, height: 22, borderRadius: '50%', background: S.card2, border: `1px solid ${S.border2}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, cursor: 'pointer' }}>
                   ✏️<input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarUpload} />
                 </label>
               </div>
-              <div className="dt" style={{ fontWeight: 600, fontSize: 18, color: '#0a0a0a', letterSpacing: -.3 }}>
+              <div style={{ fontWeight: 700, fontSize: 20, color: S.text, letterSpacing: -.3, marginBottom: 4 }}>
                 {profile.username} {clownCount(profile.aura) > 0 && '🤡'.repeat(clownCount(profile.aura))}
               </div>
-              <div style={{ margin: '8px 0 14px' }}>
+              <div style={{ margin: '10px 0 16px' }}>
                 {editingBio ? (
                   <div>
-                    <textarea value={bioText} onChange={e => setBioText(e.target.value)} placeholder="write something about yourself..." rows={2}
-                      style={{ width: '100%', border: '1px solid #e8e8e8', borderRadius: 8, padding: '8px 10px', fontSize: 13, outline: 'none', resize: 'none', fontFamily: 'inherit' }} />
-                    <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-                      <button onClick={handleSaveBio} style={{ padding: '5px 14px', borderRadius: 8, fontSize: 12, fontWeight: 600, background: '#0a0a0a', color: '#fff', border: 'none', cursor: 'pointer' }}>Save</button>
-                      <button onClick={() => setEditingBio(false)} style={{ padding: '5px 14px', borderRadius: 8, fontSize: 12, border: '1px solid #e8e8e8', background: 'transparent', color: '#666', cursor: 'pointer' }}>Cancel</button>
+                    <textarea value={bioText} onChange={e => setBioText(e.target.value)} placeholder="say something..." rows={2}
+                      style={{ width: '100%', border: `1px solid ${S.border2}`, borderRadius: 10, padding: '9px 12px', fontSize: 13, background: S.card2, color: S.text, lineHeight: 1.55, resize: 'none', fontFamily: 'inherit' }} />
+                    <div style={{ display: 'flex', gap: 7, marginTop: 8 }}>
+                      <button onClick={handleSaveBio} style={{ padding: '6px 16px', borderRadius: 9, fontSize: 12, fontWeight: 600, background: S.blue, color: '#fff', border: 'none', cursor: 'pointer' }}>Save</button>
+                      <button onClick={() => setEditingBio(false)} style={{ padding: '6px 16px', borderRadius: 9, fontSize: 12, border: `1px solid ${S.border2}`, background: 'transparent', color: S.text2, cursor: 'pointer' }}>Cancel</button>
                     </div>
                   </div>
                 ) : (
-                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                    <p className="ds" style={{ fontSize: 13, color: profile.bio ? '#555' : '#bbb', flex: 1 }}>{profile.bio || 'No bio yet'}</p>
-                    <button onClick={() => { setEditingBio(true); setBioText(profile.bio || '') }} style={{ fontSize: 11, color: '#999', background: 'none', border: '1px solid #e8e8e8', borderRadius: 6, padding: '3px 8px', cursor: 'pointer', flexShrink: 0 }}>Edit bio</button>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+                    <p style={{ fontSize: 14, color: profile.bio ? S.text2 : S.text3, flex: 1, lineHeight: 1.5 }}>{profile.bio || 'No bio yet.'}</p>
+                    <button onClick={() => { setEditingBio(true); setBioText(profile.bio || '') }} style={{ fontSize: 11, color: S.text3, background: 'none', border: `1px solid ${S.border}`, borderRadius: 7, padding: '4px 10px', cursor: 'pointer', flexShrink: 0 }}>Edit</button>
                   </div>
                 )}
               </div>
-              <div style={{ display: 'flex', gap: 22, marginBottom: 14 }}>
+              <div style={{ display: 'flex', gap: 28, marginBottom: 16 }}>
                 {[
-                  { label: 'AURA', val: fmtAura(profile.aura), color: profile.aura >= 0 ? '#1d4ed8' : '#dc2626' },
-                  { label: 'STREAK', val: `🔥${profile.streak}`, color: '#0a0a0a' },
-                  { label: 'POSTS', val: posts.filter(p => p.user_id === profile.id).length, color: '#0a0a0a' },
+                  { label: 'Aura', val: fmtAura(profile.aura), color: profile.aura >= 0 ? S.blue : S.red },
+                  { label: 'Streak', val: `🔥${profile.streak}`, color: S.text },
+                  { label: 'Posts', val: posts.filter(p => p.user_id === profile.id).length, color: S.text },
                 ].map(s => (
                   <div key={s.label}>
-                    <div className="dt" style={{ fontFamily: 'monospace', fontSize: 20, fontWeight: 500, color: s.color }}>{s.val}</div>
-                    <div style={{ fontSize: 10, color: '#999', textTransform: 'uppercase', letterSpacing: 1 }}>{s.label}</div>
+                    <div style={{ fontFamily: 'monospace', fontSize: 22, fontWeight: 700, color: s.color }}>{s.val}</div>
+                    <div style={{ fontSize: 11, color: S.text3, marginTop: 2 }}>{s.label}</div>
                   </div>
                 ))}
               </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {getBadges(profile).map(b => <span key={b} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 20, background: '#f0f0f0', border: '1px solid #e8e8e8', color: '#555' }}>{b}</span>)}
+                {getBadges(profile).map(b => (
+                  <span key={b} style={{ fontSize: 11, padding: '4px 11px', borderRadius: 20, background: S.card2, border: `1px solid ${S.border2}`, color: S.text2 }}>{b}</span>
+                ))}
               </div>
             </div>
-          </div>
-          <div style={{ fontSize: 11, fontWeight: 600, color: '#999', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>Your posts</div>
+          </Card>
+          <div style={{ fontSize: 11, fontWeight: 600, color: S.text3, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 10 }}>Your Posts</div>
           {posts.filter(p => p.user_id === profile.id).length === 0
-            ? <p style={{ fontSize: 13, color: '#999' }}>No posts yet. Drop something in the feed.</p>
+            ? <p style={{ fontSize: 14, color: S.text3, textAlign: 'center', padding: '30px 0' }}>No posts yet.</p>
             : posts.filter(p => p.user_id === profile.id).map(p => <PostCard key={p.id} post={p} />)
           }
         </>}
