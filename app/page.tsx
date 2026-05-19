@@ -278,7 +278,7 @@ export default function Home() {
     </div>
   )
 
-  const TABS = ['feed', 'leaderboard', 'bank', 'help']
+  const TABS = ['feed', 'leaderboard', 'bank', 'help', 'profile']
 
   return (
     <div style={{ minHeight: '100vh', background: S.bg, fontFamily: "'Outfit', sans-serif", color: S.text }}>
