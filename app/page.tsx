@@ -7,6 +7,13 @@ const VOTE_OPTS = [-10, -5, -1, 1, 5, 10, 50]
 const VOTE_COST: Record<string, number> = { "50": 5, "10": 1, "5": .5, "1": .5, "-1": .5, "-5": .5, "-10": 1 }
 const fmtAura = (n: number) => (n >= 0 ? "+" : "") + n.toLocaleString()
 const clownCount = (a: number) => a < -499 ? 3 : a < -99 ? 2 : a < 0 ? 1 : 0
+const timeAgo = (ts: string) => {
+  const mins = Math.round((Date.now() - new Date(ts).getTime()) / 60000)
+  if (mins < 1) return 'just now'
+  if (mins < 60) return `${mins}m ago`
+  if (mins < 1440) return `${Math.round(mins / 60)}h ago`
+  return `${Math.round(mins / 1440)}d ago`
+}
 
 const S = {
   bg: '#0d0d0d', card: '#161616', card2: '#1e1e1e', border: '#2a2a2a', border2: '#333',
@@ -211,8 +218,6 @@ export default function Home() {
     const isOwn = post.user_id === profile?.id
     const mv = myVotes[post.id]
     const cc = clownCount(owner.aura)
-    const ago = Math.round((Date.now() - new Date(post.created_at).getTime()) / 60000)
-    const agoStr = ago < 60 ? `${ago}m` : ago < 1440 ? `${Math.round(ago / 60)}h` : `${Math.round(ago / 1440)}d`
     return (
       <Card style={{ marginBottom: 8 }}>
         <div style={{ padding: '14px 16px 12px', display: 'flex', gap: 11 }}>
@@ -224,11 +229,11 @@ export default function Home() {
               <span onClick={() => setModalProfile(owner)} style={{ fontWeight: 600, fontSize: 14, cursor: 'pointer', color: S.text }}>{owner.username}</span>
               {cc > 0 && <span style={{ fontSize: 13 }}>{'🤡'.repeat(cc)}</span>}
               {owner.streak >= 3 && <span style={{ fontSize: 12, color: S.fire }}>🔥{owner.streak}</span>}
-              <span style={{ fontSize: 11, color: S.text3, marginLeft: 'auto' }}>{agoStr}</span>
+              <span style={{ fontSize: 11, color: S.text3, marginLeft: 'auto' }}>{timeAgo(post.created_at)}</span>
             </div>
-            <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color: '#ccc' }}>{post.text}</p>
+            <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color: '#ccc', direction: 'ltr', textAlign: 'left' }}>{post.text}</p>
             {post.image_url && (
-              <img src={post.image_url} alt="post" style={{ width: '100%', borderRadius: 10, marginTop: 10, maxHeight: 320, objectFit: 'cover' }} />
+              <img src={post.image_url} alt="post" style={{ width: '100%', borderRadius: 10, marginTop: 10, maxHeight: 400, objectFit: 'contain', background: S.card2 }} />
             )}
           </div>
         </div>
@@ -284,6 +289,8 @@ export default function Home() {
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-track { background: ${S.bg}; }
         ::-webkit-scrollbar-thumb { background: ${S.border2}; border-radius: 4px; }
+        textarea { direction: ltr; text-align: left; }
+        input { direction: ltr; }
       `}</style>
 
       {toast && (
@@ -350,7 +357,7 @@ export default function Home() {
               {posts.filter(p => p.user_id === modalProfile.id).map(p => (
                 <div key={p.id} style={{ background: S.card2, borderRadius: 10, padding: '10px 13px', marginBottom: 8 }}>
                   <p style={{ fontSize: 13, color: '#ccc', marginBottom: 6, lineHeight: 1.5 }}>{p.text}</p>
-                  {p.image_url && <img src={p.image_url} alt="post" style={{ width: '100%', borderRadius: 8, marginBottom: 6, maxHeight: 200, objectFit: 'cover' }} />}
+                  {p.image_url && <img src={p.image_url} alt="post" style={{ width: '100%', borderRadius: 8, marginBottom: 6, maxHeight: 200, objectFit: 'contain', background: S.card }} />}
                   <span style={{ fontFamily: 'monospace', fontSize: 12, fontWeight: 700, color: p.aura >= 0 ? S.blue : S.red }}>{fmtAura(p.aura)}</span>
                 </div>
               ))}
@@ -401,11 +408,11 @@ export default function Home() {
               <div style={{ display: 'flex', gap: 11, marginBottom: 12 }}>
                 <Av p={profile} size={36} />
                 <textarea value={draft} onChange={e => setDraft(e.target.value)} placeholder="what happened?" rows={3} autoFocus
-                  style={{ flex: 1, border: 'none', background: 'transparent', color: S.text, fontSize: 15, lineHeight: 1.6, resize: 'none', fontFamily: 'inherit', outline: 'none' }} />
+                  style={{ flex: 1, border: 'none', background: 'transparent', color: S.text, fontSize: 15, lineHeight: 1.6, resize: 'none', fontFamily: 'inherit', outline: 'none', direction: 'ltr', textAlign: 'left' }} />
               </div>
               {postImage && (
                 <div style={{ marginBottom: 10, position: 'relative' }}>
-                  <img src={URL.createObjectURL(postImage)} alt="preview" style={{ width: '100%', borderRadius: 10, maxHeight: 200, objectFit: 'cover' }} />
+                  <img src={URL.createObjectURL(postImage)} alt="preview" style={{ width: '100%', borderRadius: 10, maxHeight: 200, objectFit: 'contain', background: S.card2 }} />
                   <button onClick={() => setPostImage(null)} style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,.6)', border: 'none', color: '#fff', borderRadius: '50%', width: 24, height: 24, cursor: 'pointer', fontSize: 12 }}>✕</button>
                 </div>
               )}
@@ -477,6 +484,7 @@ export default function Home() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                     <Av p={owner} size={18} />
                     <span style={{ fontSize: 12, color: S.text2 }}>{owner.username}</span>
+                    <span style={{ fontSize: 11, color: S.text3 }}>· {timeAgo(p.created_at)}</span>
                   </div>
                 </div>
                 <div style={{ fontFamily: 'monospace', fontSize: 14, fontWeight: 700, color: p.aura >= 0 ? S.blue : S.red, flexShrink: 0 }}>{fmtAura(p.aura)}</div>
@@ -553,7 +561,7 @@ export default function Home() {
                 {editingBio ? (
                   <div>
                     <textarea value={bioText} onChange={e => setBioText(e.target.value)} placeholder="say something..." rows={2}
-                      style={{ width: '100%', border: `1px solid ${S.border2}`, borderRadius: 10, padding: '9px 12px', fontSize: 13, background: S.card2, color: S.text, lineHeight: 1.55, resize: 'none', fontFamily: 'inherit', outline: 'none' }} />
+                      style={{ width: '100%', border: `1px solid ${S.border2}`, borderRadius: 10, padding: '9px 12px', fontSize: 13, background: S.card2, color: S.text, lineHeight: 1.55, resize: 'none', fontFamily: 'inherit', outline: 'none', direction: 'ltr', textAlign: 'left' }} />
                     <div style={{ display: 'flex', gap: 7, marginTop: 8 }}>
                       <button onClick={handleSaveBio} style={{ padding: '6px 16px', borderRadius: 9, fontSize: 12, fontWeight: 600, background: S.blue, color: '#fff', border: 'none', cursor: 'pointer' }}>Save</button>
                       <button onClick={() => setEditingBio(false)} style={{ padding: '6px 16px', borderRadius: 9, fontSize: 12, border: `1px solid ${S.border2}`, background: 'transparent', color: S.text2, cursor: 'pointer' }}>Cancel</button>
