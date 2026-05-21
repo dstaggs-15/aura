@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, memo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Profile, Post, Comment, LedgerEntry } from '@/lib/types'
 
@@ -21,6 +21,133 @@ const S = {
   red: '#ef4444', redDim: '#3b1515', fire: '#f97316',
 }
 
+const Av = ({ p, size = 36 }: { p: any; size?: number }) => (
+  <div style={{
+    width: size, height: size, borderRadius: '50%', flexShrink: 0,
+    overflow: 'hidden', border: `1.5px solid ${S.border2}`,
+    background: p.avatar_url ? 'transparent' : S.blue,
+    display: 'flex', alignItems: 'center', justifyContent: 'center',
+    fontSize: size * 0.33, fontWeight: 700, color: '#fff',
+  }}>
+    {p.avatar_url
+      ? <img src={p.avatar_url} alt={p.username} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+      : p.username.slice(0, 2).toUpperCase()}
+  </div>
+)
+
+const Card = ({ children, style = {} }: any) => (
+  <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 16, ...style }}>{children}</div>
+)
+
+const CommentInput = memo(({ postId, profile, onSubmit }: { postId: number; profile: any; onSubmit: (postId: number, text: string) => void }) => {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const handleSubmit = () => {
+    const text = inputRef.current?.value?.trim()
+    if (!text) return
+    onSubmit(postId, text)
+    if (inputRef.current) inputRef.current.value = ''
+  }
+  return (
+    <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+      <Av p={profile} size={26} />
+      <input
+        ref={inputRef}
+        type="text"
+        placeholder="add a comment..."
+        dir="ltr"
+        onKeyDown={e => { if (e.key === 'Enter') handleSubmit() }}
+        style={{ flex: 1, background: S.card2, border: `1px solid ${S.border2}`, borderRadius: 20, padding: '7px 14px', fontSize: 13, color: S.text, outline: 'none', fontFamily: 'inherit', direction: 'ltr' } as any}
+      />
+      <button onClick={handleSubmit} style={{ padding: '7px 14px', borderRadius: 20, background: S.blue, border: 'none', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Post</button>
+    </div>
+  )
+})
+CommentInput.displayName = 'CommentInput'
+
+const PostCard = memo(({ post, profile, profiles, myVote, comments, isCommentsOpen, onVote, onOpenProfile, onToggleComments, onComment }: {
+  post: any; profile: any; profiles: any[]; myVote: number | undefined;
+  comments: any[]; isCommentsOpen: boolean;
+  onVote: (postId: number, val: number) => void;
+  onOpenProfile: (p: any) => void;
+  onToggleComments: (postId: number) => void;
+  onComment: (postId: number, text: string) => void;
+}) => {
+  const owner = profiles.find((p: any) => p.id === post.user_id)
+  if (!owner) return null
+  const isOwn = post.user_id === profile?.id
+  const cc = clownCount(owner.aura)
+
+  return (
+    <Card style={{ marginBottom: 8 }}>
+      <div style={{ padding: '14px 16px 12px', display: 'flex', gap: 11 }}>
+        <div onClick={() => onOpenProfile(owner)} style={{ cursor: 'pointer', marginTop: 1 }}>
+          <Av p={owner} size={38} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
+            <span onClick={() => onOpenProfile(owner)} style={{ fontWeight: 600, fontSize: 14, cursor: 'pointer', color: S.text }}>{owner.username}</span>
+            {cc > 0 && <span style={{ fontSize: 13 }}>{'🤡'.repeat(cc)}</span>}
+            {owner.streak >= 3 && <span style={{ fontSize: 12, color: S.fire }}>🔥{owner.streak}</span>}
+            <span style={{ fontSize: 11, color: S.text3, marginLeft: 'auto' }}>{timeAgo(post.created_at)}</span>
+          </div>
+          <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color: '#ccc', unicodeBidi: 'plaintext', textAlign: 'left' } as any}>{post.text}</p>
+          {post.image_url && (
+            <img src={post.image_url} alt="post" style={{ width: '100%', borderRadius: 10, marginTop: 10, maxHeight: 400, objectFit: 'contain', background: S.card2 }} />
+          )}
+        </div>
+      </div>
+
+      <div style={{ padding: '10px 16px 12px', borderTop: `1px solid ${S.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+        <span style={{ fontFamily: 'monospace', fontSize: 14, fontWeight: 700, color: post.aura >= 0 ? S.blue : S.red }}>{fmtAura(post.aura)}</span>
+        {isOwn
+          ? <span style={{ fontSize: 11, color: S.text3 }}>your post</span>
+          : <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+              {VOTE_OPTS.map(v => {
+                const active = myVote === v
+                const neg = v < 0
+                return (
+                  <button key={v} onClick={() => onVote(post.id, v)} style={{
+                    padding: '4px 8px', borderRadius: 7, fontSize: 11, fontWeight: 700,
+                    fontFamily: 'monospace', cursor: 'pointer', transition: 'all .1s',
+                    border: `1px solid ${active ? 'transparent' : S.border2}`,
+                    background: active ? (neg ? S.red : S.blue) : S.card2,
+                    color: active ? '#fff' : (neg ? S.red : S.blue),
+                  }}>{v > 0 ? `+${v}` : v}</button>
+                )
+              })}
+            </div>
+        }
+      </div>
+
+      <div style={{ borderTop: `1px solid ${S.border}` }}>
+        <button onClick={() => onToggleComments(post.id)} style={{ width: '100%', padding: '10px 16px', background: 'transparent', border: 'none', color: S.text3, fontSize: 12, cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 6 }}>
+          💬 {isCommentsOpen ? 'Hide comments' : `Comments${comments.length > 0 ? ` (${comments.length})` : ''}`}
+        </button>
+        {isCommentsOpen && (
+          <div style={{ padding: '0 16px 14px' }}>
+            {comments.length === 0 && <p style={{ fontSize: 12, color: S.text3, marginBottom: 10 }}>No comments yet.</p>}
+            {comments.map((c: any) => {
+              const cu = profiles.find((p: any) => p.id === c.user_id)
+              if (!cu) return null
+              return (
+                <div key={c.id} style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                  <Av p={cu} size={26} />
+                  <div style={{ flex: 1, background: S.card2, borderRadius: 10, padding: '8px 12px' }}>
+                    <div style={{ fontWeight: 600, fontSize: 12, color: S.text, marginBottom: 3 }}>{cu.username}</div>
+                    <p style={{ fontSize: 13, color: '#ccc', margin: 0, lineHeight: 1.5 }}>{c.text}</p>
+                  </div>
+                </div>
+              )
+            })}
+            <CommentInput postId={post.id} profile={profile} onSubmit={onComment} />
+          </div>
+        )}
+      </div>
+    </Card>
+  )
+})
+PostCard.displayName = 'PostCard'
+
 export default function Home() {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [profiles, setProfiles] = useState<Profile[]>([])
@@ -36,11 +163,9 @@ export default function Home() {
   const [toast, setToast] = useState<{ msg: string; type: string } | null>(null)
   const [modalProfile, setModalProfile] = useState<Profile | null>(null)
   const [editingBio, setEditingBio] = useState(false)
-  const [bioText, setBioText] = useState('')
   const [profileVotes, setProfileVotes] = useState<Record<string, number>>({})
   const [comments, setComments] = useState<Record<number, Comment[]>>({})
   const [openComments, setOpenComments] = useState<Record<number, boolean>>({})
-  const [commentDrafts, setCommentDrafts] = useState<Record<number, string>>({})
   const [ledger, setLedger] = useState<LedgerEntry[]>([])
   const [showLedger, setShowLedger] = useState(false)
   const toastTimer = useRef<any>(null)
@@ -107,14 +232,12 @@ export default function Home() {
     }
     const newPostAura = post.aura - prev + val
     await supabase.from('posts').update({ aura: newPostAura }).eq('id', postId)
-
     let newMyAura = profile.aura
     if (cost > 0) {
       newMyAura = Math.round((profile.aura - cost) * 10) / 10
       await supabase.from('profiles').update({ aura: newMyAura }).eq('id', profile.id)
-      await addLedgerEntry(profile.id, -cost, 'vote_cost', `Sent ${val > 0 ? '+' : ''}${val} on a post`, newMyAura)
+      await addLedgerEntry(profile.id, -cost, 'vote_cost', `Sent +${val} vote`, newMyAura)
     }
-
     const owner = profiles.find(p => p.id === post.user_id)
     if (owner && owner.id !== profile.id) {
       let gain = val - prev
@@ -127,9 +250,8 @@ export default function Home() {
       }
       const newOwnerAura = Math.round((owner.aura + gain) * 10) / 10
       await supabase.from('profiles').update({ aura: newOwnerAura }).eq('id', owner.id)
-      await addLedgerEntry(owner.id, gain, 'post_vote', `${gain > 0 ? '+' : ''}${val} vote on your post`, newOwnerAura)
+      await addLedgerEntry(owner.id, gain, 'post_vote', `Vote on your post`, newOwnerAura)
     }
-
     setMyVotes(v => ({ ...v, [postId]: val }))
     setPosts(ps => ps.map(p => p.id === postId ? { ...p, aura: newPostAura } : p))
     if (cost > 0) setProfile(p => p ? { ...p, aura: newMyAura } : p)
@@ -159,7 +281,7 @@ export default function Home() {
     if (target) {
       const newAura = Math.round((target.aura + gain) * 10) / 10
       await supabase.from('profiles').update({ aura: newAura }).eq('id', targetId)
-      await addLedgerEntry(targetId, gain, 'profile_vote', `Profile vote ${gain > 0 ? '+' : ''}${gain}`, newAura)
+      await addLedgerEntry(targetId, gain, 'profile_vote', `Profile vote`, newAura)
       setProfiles(ps => ps.map(p => p.id === targetId ? { ...p, aura: newAura } : p))
       if (modalProfile?.id === targetId) setModalProfile(mp => mp ? { ...mp, aura: newAura } : mp)
     }
@@ -205,15 +327,18 @@ export default function Home() {
     setPosting(false)
   }
 
-  const handleComment = async (postId: number) => {
-    const input = document.getElementById(`comment-${postId}`) as HTMLInputElement
-    const text = input?.value?.trim()
-    if (!profile || !text) return
-    
-    const { data } = await supabase.from('comments').insert({ post_id: postId, user_id: profile.id, text }).select('*, profiles(*)').single()
-    if (data) {
-      setComments(c => ({ ...c, [postId]: [...(c[postId] || []), data] }))
-      if (input) input.value = ""
+  const handleComment = async (postId: number, text: string) => {
+    if (!profile || !text.trim()) return
+    const { data } = await supabase.from('comments').insert({ post_id: postId, user_id: profile.id, text: text.trim() }).select('*, profiles(*)').single()
+    if (data) setComments(c => ({ ...c, [postId]: [...(c[postId] || []), data] }))
+  }
+
+  const handleToggleComments = async (postId: number) => {
+    const nowOpen = !openComments[postId]
+    setOpenComments(o => ({ ...o, [postId]: nowOpen }))
+    if (nowOpen && !comments[postId]) {
+      const { data } = await supabase.from('comments').select('*, profiles(*)').eq('post_id', postId).order('created_at', { ascending: true })
+      if (data) setComments(c => ({ ...c, [postId]: data }))
     }
   }
 
@@ -262,120 +387,6 @@ export default function Home() {
   const topPost = [...posts].sort((a, b) => b.aura - a.aura)[0]
   const topPostUser = topPost ? profiles.find(p => p.id === topPost.user_id) : null
   const sorted = [...posts].sort((a, b) => filter === 'trending' ? b.aura - a.aura : new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-
-  const Av = ({ p, size = 36 }: { p: any; size?: number }) => (
-    <div style={{
-      width: size, height: size, borderRadius: '50%', flexShrink: 0,
-      overflow: 'hidden', border: `1.5px solid ${S.border2}`,
-      background: p.avatar_url ? 'transparent' : S.blue,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      fontSize: size * 0.33, fontWeight: 700, color: '#fff',
-    }}>
-      {p.avatar_url
-        ? <img src={p.avatar_url} alt={p.username} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-        : p.username.slice(0, 2).toUpperCase()}
-    </div>
-  )
-
-  const Card = ({ children, style = {} }: any) => (
-    <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 16, ...style }}>{children}</div>
-  )
-
-  const PostCard = ({ post }: { post: any }) => {
-    const owner = profiles.find(p => p.id === post.user_id)
-    if (!owner) return null
-    const isOwn = post.user_id === profile?.id
-    const mv = myVotes[post.id]
-    const cc = clownCount(owner.aura)
-    const postComments = comments[post.id] || []
-    const isOpen = openComments[post.id] || false
-
-    return (
-      <Card style={{ marginBottom: 8 }}>
-        <div style={{ padding: '14px 16px 12px', display: 'flex', gap: 11 }}>
-          <div onClick={() => setModalProfile(owner)} style={{ cursor: 'pointer', marginTop: 1 }}>
-            <Av p={owner} size={38} />
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
-              <span onClick={() => setModalProfile(owner)} style={{ fontWeight: 600, fontSize: 14, cursor: 'pointer', color: S.text }}>{owner.username}</span>
-              {cc > 0 && <span style={{ fontSize: 13 }}>{'🤡'.repeat(cc)}</span>}
-              {owner.streak >= 3 && <span style={{ fontSize: 12, color: S.fire }}>🔥{owner.streak}</span>}
-              <span style={{ fontSize: 11, color: S.text3, marginLeft: 'auto' }}>{timeAgo(post.created_at)}</span>
-            </div>
-            <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color: '#ccc', unicodeBidi: 'plaintext', textAlign: 'left' } as any}>{post.text}</p>
-            {post.image_url && (
-              <img src={post.image_url} alt="post" style={{ width: '100%', borderRadius: 10, marginTop: 10, maxHeight: 400, objectFit: 'contain', background: S.card2 }} />
-            )}
-          </div>
-        </div>
-
-        <div style={{ padding: '10px 16px 12px', borderTop: `1px solid ${S.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-          <span style={{ fontFamily: 'monospace', fontSize: 14, fontWeight: 700, color: post.aura >= 0 ? S.blue : S.red }}>{fmtAura(post.aura)}</span>
-          {isOwn
-            ? <span style={{ fontSize: 11, color: S.text3 }}>your post</span>
-            : <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                {VOTE_OPTS.map(v => {
-                  const active = mv === v
-                  const neg = v < 0
-                  return (
-                    <button key={v} onClick={() => handleVote(post.id, v)} style={{
-                      padding: '4px 8px', borderRadius: 7, fontSize: 11, fontWeight: 700,
-                      fontFamily: 'monospace', cursor: 'pointer', transition: 'all .1s',
-                      border: `1px solid ${active ? 'transparent' : S.border2}`,
-                      background: active ? (neg ? S.red : S.blue) : S.card2,
-                      color: active ? '#fff' : (neg ? S.red : S.blue),
-                    }}>{v > 0 ? `+${v}` : v}</button>
-                  )
-                })}
-              </div>
-          }
-        </div>
-
-        <div style={{ borderTop: `1px solid ${S.border}` }}>
-          <button onClick={() => {
-            const nowOpen = !isOpen
-            setOpenComments(o => ({ ...o, [post.id]: nowOpen }))
-            if (nowOpen && !comments[post.id]) loadComments(post.id)
-          }} style={{ width: '100%', padding: '10px 16px', background: 'transparent', border: 'none', color: S.text3, fontSize: 12, cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 6 }}>
-            💬 {isOpen ? 'Hide' : `Comments${postComments.length > 0 ? ` (${postComments.length})` : ''}`}
-          </button>
-
-          {isOpen && (
-            <div style={{ padding: '0 16px 14px' }}>
-              {postComments.length === 0 && <p style={{ fontSize: 12, color: S.text3, marginBottom: 10 }}>No comments yet.</p>}
-              {postComments.map(c => {
-                const cu = profiles.find(p => p.id === c.user_id)
-                if (!cu) return null
-                return (
-                  <div key={c.id} style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-                    <Av p={cu} size={26} />
-                    <div style={{ flex: 1, background: S.card2, borderRadius: 10, padding: '8px 12px' }}>
-                      <div style={{ fontWeight: 600, fontSize: 12, color: S.text, marginBottom: 3 }}>{cu.username}</div>
-                      <p style={{ fontSize: 13, color: '#ccc', margin: 0, lineHeight: 1.5 }}>{c.text}</p>
-                    </div>
-                  </div>
-                )
-              })}
-              <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
-                <Av p={profile} size={26} />
-                <input
-                  type="text"
-                  placeholder="add a comment..."
-                  defaultValue=""
-                  onKeyDown={e => { if (e.key === 'Enter') handleComment(post.id) }}
-                  onKeyDown={e => { if (e.key === 'Enter') handleComment(post.id) }}
-                  dir="ltr"
-                  style={{ flex: 1, background: S.card2, border: `1px solid ${S.border2}`, borderRadius: 20, padding: '7px 14px', fontSize: 13, color: S.text, outline: 'none', fontFamily: 'inherit', direction: 'ltr' } as any}
-                />
-                <button onClick={() => handleComment(post.id)} style={{ padding: '7px 14px', borderRadius: 20, background: S.blue, border: 'none', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Post</button>
-              </div>
-            </div>
-          )}
-        </div>
-      </Card>
-    )
-  }
 
   const getBadges = (p: any) => {
     const b = ['🌐 Joined']
@@ -578,7 +589,21 @@ export default function Home() {
             ))}
           </div>
           {sorted.length === 0 && <p style={{ color: S.text3, fontSize: 14, textAlign: 'center', padding: '40px 0' }}>No posts yet. Be the first 👆</p>}
-          {sorted.map(p => <PostCard key={p.id} post={p} />)}
+          {sorted.map(p => (
+            <PostCard
+              key={p.id}
+              post={p}
+              profile={profile}
+              profiles={profiles}
+              myVote={myVotes[p.id]}
+              comments={comments[p.id] || []}
+              isCommentsOpen={openComments[p.id] || false}
+              onVote={handleVote}
+              onOpenProfile={setModalProfile}
+              onToggleComments={handleToggleComments}
+              onComment={handleComment}
+            />
+          ))}
         </>}
 
         {tab === 'leaderboard' && <>
@@ -669,11 +694,11 @@ export default function Home() {
           {[
             { title: '🔥 What is aura?', body: 'Your score on this site. Post something, people vote on it, your aura goes up or down. Simple.' },
             { title: '🗳️ Voting', body: 'Vote +1 to +50 or negative on any post. Positive votes cost you a small amount of your own aura. Negative votes are free.' },
-            { title: '📊 Profile votes', body: 'You can vote on someone\'s whole profile, not just their posts. Tap their name or avatar anywhere to pull up their profile and rate their vibe.' },
+            { title: '📊 Profile votes', body: "You can vote on someone's whole profile, not just their posts. Tap their name or avatar anywhere to pull up their profile and rate their vibe." },
             { title: '🤡 Negative aura', body: 'Drop below 0 and clown emojis start showing on your profile. You also only keep 75% of aura you earn while negative — the rest goes into the prize pool.' },
             { title: '🏆 Prize pool', body: 'Every Sunday at midnight, whoever has the highest-aura post that week wins the entire pool. The pool fills from the 25% tax on negative users.' },
             { title: '🔥 Streaks', body: 'Hit Check In every day for +5 aura. Miss a day and your streak resets to zero.' },
-            { title: '🚫 Glazing', body: 'Max 3 big votes (+50 or -50) to the same person per 24 hours. Go over that and you get hit with -50. Don\'t glaze.' },
+            { title: '🚫 Glazing', body: "Max 3 big votes (+50 or -50) to the same person per 24 hours. Go over that and you get hit with -50. Don't glaze." },
             { title: '💬 Comments', body: 'Tap the comment button on any post to see and leave comments.' },
             { title: '📒 Ledger', body: 'Go to your Profile and tap Ledger to see every aura transaction — what you gained, lost, and when.' },
           ].map(item => (
@@ -779,7 +804,21 @@ export default function Home() {
           <div style={{ fontSize: 11, fontWeight: 600, color: S.text3, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 10 }}>Your Posts</div>
           {posts.filter(p => p.user_id === profile.id).length === 0
             ? <p style={{ fontSize: 14, color: S.text3, textAlign: 'center', padding: '30px 0' }}>No posts yet.</p>
-            : posts.filter(p => p.user_id === profile.id).map(p => <PostCard key={p.id} post={p} />)
+            : posts.filter(p => p.user_id === profile.id).map(p => (
+              <PostCard
+                key={p.id}
+                post={p}
+                profile={profile}
+                profiles={profiles}
+                myVote={myVotes[p.id]}
+                comments={comments[p.id] || []}
+                isCommentsOpen={openComments[p.id] || false}
+                onVote={handleVote}
+                onOpenProfile={setModalProfile}
+                onToggleComments={handleToggleComments}
+                onComment={handleComment}
+              />
+            ))
           }
         </>}
 
