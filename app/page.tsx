@@ -359,8 +359,8 @@ export default function Home() {
                 <input
                   type="text"
                   placeholder="add a comment..."
-                  value={commentDrafts[post.id] || ''}
-                  onChange={e => setCommentDrafts(d => ({ ...d, [post.id]: e.target.value }))}
+                  defaultValue=""
+                  onKeyDown={e => { if (e.key === 'Enter') handleComment(post.id) }}
                   onKeyDown={e => { if (e.key === 'Enter') handleComment(post.id) }}
                   dir="ltr"
                   style={{ flex: 1, background: S.card2, border: `1px solid ${S.border2}`, borderRadius: 20, padding: '7px 14px', fontSize: 13, color: S.text, outline: 'none', fontFamily: 'inherit', direction: 'ltr' } as any}
