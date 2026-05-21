@@ -206,11 +206,14 @@ export default function Home() {
   }
 
   const handleComment = async (postId: number) => {
-    if (!profile || !commentDrafts[postId]?.trim()) return
-    const { data } = await supabase.from('comments').insert({ post_id: postId, user_id: profile.id, text: commentDrafts[postId].trim() }).select('*, profiles(*)').single()
+    const input = document.getElementById(`comment-${postId}`) as HTMLInputElement
+    const text = input?.value?.trim()
+    if (!profile || !text) return
+    
+    const { data } = await supabase.from('comments').insert({ post_id: postId, user_id: profile.id, text }).select('*, profiles(*)').single()
     if (data) {
       setComments(c => ({ ...c, [postId]: [...(c[postId] || []), data] }))
-      setCommentDrafts(d => ({ ...d, [postId]: '' }))
+      if (input) input.value = ""
     }
   }
 
