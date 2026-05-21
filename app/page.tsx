@@ -1,10 +1,10 @@
 'use client'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Profile, Post } from '@/lib/types'
+import { Profile, Post, Comment, LedgerEntry } from '@/lib/types'
 
-const VOTE_OPTS = [-10, -5, -1, 1, 5, 10, 50]
-const VOTE_COST: Record<string, number> = { "50": 5, "10": 1, "5": .5, "1": .5, "-1": .5, "-5": .5, "-10": 1 }
+const VOTE_OPTS = [-50, -10, -5, -1, 1, 5, 10, 50]
+const VOTE_COST: Record<string, number> = { "50": 5, "10": 1, "5": .5, "1": .5, "-1": 0, "-5": 0, "-10": 0, "-50": 0 }
 const fmtAura = (n: number) => (n >= 0 ? "+" : "") + n.toLocaleString()
 const clownCount = (a: number) => a < -499 ? 3 : a < -99 ? 2 : a < 0 ? 1 : 0
 const timeAgo = (ts: string) => {
@@ -30,7 +30,7 @@ export default function Home() {
   const [lbTab, setLbTab] = useState('people')
   const [filter, setFilter] = useState('recent')
   const [composing, setComposing] = useState(false)
-  const [draft, setDraft] = useState('')
+  const [posting, setPosting] = useState(false)
   const [postImage, setPostImage] = useState<File | null>(null)
   const [taxBucket, setTaxBucket] = useState(0)
   const [toast, setToast] = useState<{ msg: string; type: string } | null>(null)
@@ -38,10 +38,17 @@ export default function Home() {
   const [editingBio, setEditingBio] = useState(false)
   const [bioText, setBioText] = useState('')
   const [profileVotes, setProfileVotes] = useState<Record<string, number>>({})
+  const [comments, setComments] = useState<Record<number, Comment[]>>({})
+  const [openComments, setOpenComments] = useState<Record<number, boolean>>({})
+  const [commentDrafts, setCommentDrafts] = useState<Record<number, string>>({})
+  const [ledger, setLedger] = useState<LedgerEntry[]>([])
+  const [showLedger, setShowLedger] = useState(false)
   const toastTimer = useRef<any>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const postImageRef = useRef<HTMLInputElement>(null)
   const bannerRef = useRef<HTMLInputElement>(null)
+  const draftRef = useRef<string>('')
+  const bioRef = useRef<string>('')
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -65,17 +72,32 @@ export default function Home() {
     if (pvs) { const m: Record<string, number> = {}; pvs.forEach((v: any) => m[v.target_id] = v.value); setProfileVotes(m) }
   }
 
+  const loadComments = async (postId: number) => {
+    const { data } = await supabase.from('comments').select('*, profiles(*)').eq('post_id', postId).order('created_at', { ascending: true })
+    if (data) setComments(c => ({ ...c, [postId]: data }))
+  }
+
+  const loadLedger = async () => {
+    if (!profile) return
+    const { data } = await supabase.from('aura_ledger').select('*').eq('user_id', profile.id).order('created_at', { ascending: false }).limit(50)
+    if (data) setLedger(data)
+  }
+
   const notify = (msg: string, type = 'neutral') => {
     setToast({ msg, type })
     if (toastTimer.current) clearTimeout(toastTimer.current)
     toastTimer.current = setTimeout(() => setToast(null), 2400)
   }
 
+  const addLedgerEntry = async (userId: string, amount: number, type: string, description: string, balanceAfter: number) => {
+    await supabase.from('aura_ledger').insert({ user_id: userId, amount, type, description, balance_after: balanceAfter })
+  }
+
   const handleVote = async (postId: number, val: number) => {
     if (!profile) return
     const prev = myVotes[postId] ?? 0
     if (prev === val) return
-    const cost = VOTE_COST[String(val)] ?? 0.5
+    const cost = val > 0 ? (VOTE_COST[String(val)] ?? 0) : 0
     const post = posts.find(p => p.id === postId)
     if (!post) return
     if (prev === 0) {
@@ -85,8 +107,14 @@ export default function Home() {
     }
     const newPostAura = post.aura - prev + val
     await supabase.from('posts').update({ aura: newPostAura }).eq('id', postId)
-    const newMyAura = Math.round((profile.aura - cost) * 10) / 10
-    await supabase.from('profiles').update({ aura: newMyAura }).eq('id', profile.id)
+
+    let newMyAura = profile.aura
+    if (cost > 0) {
+      newMyAura = Math.round((profile.aura - cost) * 10) / 10
+      await supabase.from('profiles').update({ aura: newMyAura }).eq('id', profile.id)
+      await addLedgerEntry(profile.id, -cost, 'vote_cost', `Sent ${val > 0 ? '+' : ''}${val} on a post`, newMyAura)
+    }
+
     const owner = profiles.find(p => p.id === post.user_id)
     if (owner && owner.id !== profile.id) {
       let gain = val - prev
@@ -99,12 +127,14 @@ export default function Home() {
       }
       const newOwnerAura = Math.round((owner.aura + gain) * 10) / 10
       await supabase.from('profiles').update({ aura: newOwnerAura }).eq('id', owner.id)
+      await addLedgerEntry(owner.id, gain, 'post_vote', `${gain > 0 ? '+' : ''}${val} vote on your post`, newOwnerAura)
     }
+
     setMyVotes(v => ({ ...v, [postId]: val }))
     setPosts(ps => ps.map(p => p.id === postId ? { ...p, aura: newPostAura } : p))
-    setProfile(p => p ? { ...p, aura: newMyAura } : p)
+    if (cost > 0) setProfile(p => p ? { ...p, aura: newMyAura } : p)
     setProfiles(ps => ps.map(p => {
-      if (p.id === profile.id) return { ...p, aura: newMyAura }
+      if (p.id === profile.id && cost > 0) return { ...p, aura: newMyAura }
       if (p.id === post.user_id) {
         let gain = val - prev
         if (p.aura < 0 && gain > 0) gain *= 0.75
@@ -129,6 +159,7 @@ export default function Home() {
     if (target) {
       const newAura = Math.round((target.aura + gain) * 10) / 10
       await supabase.from('profiles').update({ aura: newAura }).eq('id', targetId)
+      await addLedgerEntry(targetId, gain, 'profile_vote', `Profile vote ${gain > 0 ? '+' : ''}${gain}`, newAura)
       setProfiles(ps => ps.map(p => p.id === targetId ? { ...p, aura: newAura } : p))
       if (modalProfile?.id === targetId) setModalProfile(mp => mp ? { ...mp, aura: newAura } : mp)
     }
@@ -144,13 +175,15 @@ export default function Home() {
     const newStreak = profile.last_checkin === yesterday ? profile.streak + 1 : 1
     const newAura = profile.aura + 5
     await supabase.from('profiles').update({ aura: newAura, streak: newStreak, last_checkin: today }).eq('id', profile.id)
+    await addLedgerEntry(profile.id, 5, 'checkin', `Day ${newStreak} check-in`, newAura)
     setProfile(p => p ? { ...p, aura: newAura, streak: newStreak, last_checkin: today } : p)
     setProfiles(ps => ps.map(p => p.id === profile.id ? { ...p, aura: newAura, streak: newStreak, last_checkin: today } : p))
     notify(`🔥 +5 aura — ${newStreak} day streak!`, 'pos')
   }
 
   const handlePost = async () => {
-    if (!draft.trim() || !profile) return
+    if (!draftRef.current.trim() || !profile || posting) return
+    setPosting(true)
     let image_url = null
     if (postImage) {
       const ext = postImage.name.split('.').pop()
@@ -159,8 +192,26 @@ export default function Home() {
       const { data: urlData } = supabase.storage.from('posts').getPublicUrl(path)
       image_url = urlData.publicUrl
     }
-    const { data } = await supabase.from('posts').insert({ user_id: profile.id, text: draft.trim(), aura: 0, image_url }).select('*, profiles(*)').single()
-    if (data) { setPosts(ps => [data, ...ps]); setDraft(''); setPostImage(null); setComposing(false); notify('Posted 🔥') }
+    const { data } = await supabase.from('posts').insert({ user_id: profile.id, text: draftRef.current.trim(), aura: 0, image_url }).select('*, profiles(*)').single()
+    if (data) {
+      setPosts(ps => [data, ...ps])
+      draftRef.current = ''
+      const ta = document.getElementById('post-textarea') as HTMLTextAreaElement
+      if (ta) ta.value = ''
+      setPostImage(null)
+      setComposing(false)
+      notify('Posted 🔥')
+    }
+    setPosting(false)
+  }
+
+  const handleComment = async (postId: number) => {
+    if (!profile || !commentDrafts[postId]?.trim()) return
+    const { data } = await supabase.from('comments').insert({ post_id: postId, user_id: profile.id, text: commentDrafts[postId].trim() }).select('*, profiles(*)').single()
+    if (data) {
+      setComments(c => ({ ...c, [postId]: [...(c[postId] || []), data] }))
+      setCommentDrafts(d => ({ ...d, [postId]: '' }))
+    }
   }
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -183,17 +234,18 @@ export default function Home() {
     const path = `banner-${profile.id}.${ext}`
     await supabase.storage.from('avatars').upload(path, file, { upsert: true })
     const { data } = supabase.storage.from('avatars').getPublicUrl(path)
-    await supabase.from('profiles').update({ banner_url: data.publicUrl } as any).eq('id', profile.id)
-    setProfile(p => p ? { ...p, banner_url: data.publicUrl } as any : p)
-    setProfiles(ps => ps.map(p => p.id === profile.id ? { ...p, banner_url: data.publicUrl } as any : p))
+    await supabase.from('profiles').update({ banner_url: data.publicUrl }).eq('id', profile.id)
+    setProfile(p => p ? { ...p, banner_url: data.publicUrl } : p)
+    setProfiles(ps => ps.map(p => p.id === profile.id ? { ...p, banner_url: data.publicUrl } : p))
     notify('Banner updated', 'pos')
   }
 
   const handleSaveBio = async () => {
     if (!profile) return
-    await supabase.from('profiles').update({ bio: bioText }).eq('id', profile.id)
-    setProfile(p => p ? { ...p, bio: bioText } : p)
-    setProfiles(ps => ps.map(p => p.id === profile.id ? { ...p, bio: bioText } : p))
+    const bio = bioRef.current
+    await supabase.from('profiles').update({ bio }).eq('id', profile.id)
+    setProfile(p => p ? { ...p, bio } : p)
+    setProfiles(ps => ps.map(p => p.id === profile.id ? { ...p, bio } : p))
     setEditingBio(false)
     notify('Bio saved', 'pos')
   }
@@ -232,6 +284,9 @@ export default function Home() {
     const isOwn = post.user_id === profile?.id
     const mv = myVotes[post.id]
     const cc = clownCount(owner.aura)
+    const postComments = comments[post.id] || []
+    const isOpen = openComments[post.id] || false
+
     return (
       <Card style={{ marginBottom: 8 }}>
         <div style={{ padding: '14px 16px 12px', display: 'flex', gap: 11 }}>
@@ -245,12 +300,13 @@ export default function Home() {
               {owner.streak >= 3 && <span style={{ fontSize: 12, color: S.fire }}>🔥{owner.streak}</span>}
               <span style={{ fontSize: 11, color: S.text3, marginLeft: 'auto' }}>{timeAgo(post.created_at)}</span>
             </div>
-            <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color: '#ccc', unicodeBidi: 'plaintext', textAlign: 'left' }}>{post.text}</p>
+            <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color: '#ccc', unicodeBidi: 'plaintext', textAlign: 'left' } as any}>{post.text}</p>
             {post.image_url && (
               <img src={post.image_url} alt="post" style={{ width: '100%', borderRadius: 10, marginTop: 10, maxHeight: 400, objectFit: 'contain', background: S.card2 }} />
             )}
           </div>
         </div>
+
         <div style={{ padding: '10px 16px 12px', borderTop: `1px solid ${S.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
           <span style={{ fontFamily: 'monospace', fontSize: 14, fontWeight: 700, color: post.aura >= 0 ? S.blue : S.red }}>{fmtAura(post.aura)}</span>
           {isOwn
@@ -271,6 +327,48 @@ export default function Home() {
                 })}
               </div>
           }
+        </div>
+
+        <div style={{ borderTop: `1px solid ${S.border}` }}>
+          <button onClick={() => {
+            const nowOpen = !isOpen
+            setOpenComments(o => ({ ...o, [post.id]: nowOpen }))
+            if (nowOpen && !comments[post.id]) loadComments(post.id)
+          }} style={{ width: '100%', padding: '10px 16px', background: 'transparent', border: 'none', color: S.text3, fontSize: 12, cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 6 }}>
+            💬 {isOpen ? 'Hide' : `Comments${postComments.length > 0 ? ` (${postComments.length})` : ''}`}
+          </button>
+
+          {isOpen && (
+            <div style={{ padding: '0 16px 14px' }}>
+              {postComments.length === 0 && <p style={{ fontSize: 12, color: S.text3, marginBottom: 10 }}>No comments yet.</p>}
+              {postComments.map(c => {
+                const cu = profiles.find(p => p.id === c.user_id)
+                if (!cu) return null
+                return (
+                  <div key={c.id} style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                    <Av p={cu} size={26} />
+                    <div style={{ flex: 1, background: S.card2, borderRadius: 10, padding: '8px 12px' }}>
+                      <div style={{ fontWeight: 600, fontSize: 12, color: S.text, marginBottom: 3 }}>{cu.username}</div>
+                      <p style={{ fontSize: 13, color: '#ccc', margin: 0, lineHeight: 1.5 }}>{c.text}</p>
+                    </div>
+                  </div>
+                )
+              })}
+              <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+                <Av p={profile} size={26} />
+                <input
+                  type="text"
+                  placeholder="add a comment..."
+                  value={commentDrafts[post.id] || ''}
+                  onChange={e => setCommentDrafts(d => ({ ...d, [post.id]: e.target.value }))}
+                  onKeyDown={e => { if (e.key === 'Enter') handleComment(post.id) }}
+                  dir="ltr"
+                  style={{ flex: 1, background: S.card2, border: `1px solid ${S.border2}`, borderRadius: 20, padding: '7px 14px', fontSize: 13, color: S.text, outline: 'none', fontFamily: 'inherit', direction: 'ltr' } as any}
+                />
+                <button onClick={() => handleComment(post.id)} style={{ padding: '7px 14px', borderRadius: 20, background: S.blue, border: 'none', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Post</button>
+              </div>
+            </div>
+          )}
         </div>
       </Card>
     )
@@ -304,7 +402,11 @@ export default function Home() {
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-track { background: ${S.bg}; }
         ::-webkit-scrollbar-thumb { background: ${S.border2}; border-radius: 4px; }
-        textarea, input { direction: ltr !important; unicode-bidi: plaintext !important; text-align: left !important; }
+        textarea, input[type="text"], input[type="email"], input[type="password"] {
+          direction: ltr !important;
+          unicode-bidi: plaintext !important;
+          text-align: left !important;
+        }
       `}</style>
 
       {toast && (
@@ -325,7 +427,7 @@ export default function Home() {
               background: clownCount(modalProfile.aura) > 0
                 ? `repeating-linear-gradient(45deg,${S.redDim} 0,${S.redDim} 12px,${S.card} 12px,${S.card} 24px)`
                 : `linear-gradient(135deg, ${S.blueDim}, ${S.card})`,
-              backgroundImage: (modalProfile as any).banner_url ? `url(${(modalProfile as any).banner_url})` : undefined,
+              backgroundImage: modalProfile.banner_url ? `url(${modalProfile.banner_url})` : undefined,
               backgroundSize: 'cover', backgroundPosition: 'center',
               borderRadius: '20px 20px 0 0', position: 'relative'
             }}>
@@ -430,12 +532,13 @@ export default function Home() {
               <div style={{ display: 'flex', gap: 11, marginBottom: 12 }}>
                 <Av p={profile} size={36} />
                 <textarea
-                  value={draft}
-                  onChange={e => setDraft(e.target.value)}
+                  id="post-textarea"
+                  defaultValue=""
+                  onChange={e => { draftRef.current = e.target.value }}
                   placeholder="what happened?"
                   rows={3}
-                  autoFocus
                   dir="ltr"
+                  autoComplete="off"
                   style={{ flex: 1, border: 'none', background: 'transparent', color: S.text, fontSize: 16, lineHeight: 1.6, resize: 'none', fontFamily: 'inherit', outline: 'none', direction: 'ltr', unicodeBidi: 'plaintext', textAlign: 'left' } as any}
                 />
               </div>
@@ -451,8 +554,10 @@ export default function Home() {
                   <input ref={postImageRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => setPostImage(e.target.files?.[0] || null)} />
                 </label>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={() => { setComposing(false); setDraft(''); setPostImage(null) }} style={{ padding: '7px 16px', borderRadius: 10, fontSize: 13, border: `1px solid ${S.border2}`, background: 'transparent', color: S.text2, cursor: 'pointer' }}>Cancel</button>
-                  <button onClick={handlePost} disabled={!draft.trim()} style={{ padding: '7px 18px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: 'none', background: draft.trim() ? S.blue : S.border, color: draft.trim() ? '#fff' : S.text3, cursor: draft.trim() ? 'pointer' : 'default' }}>Post</button>
+                  <button onClick={() => { setComposing(false); draftRef.current = ''; setPostImage(null) }} style={{ padding: '7px 16px', borderRadius: 10, fontSize: 13, border: `1px solid ${S.border2}`, background: 'transparent', color: S.text2, cursor: 'pointer' }}>Cancel</button>
+                  <button onClick={handlePost} disabled={posting} style={{ padding: '7px 18px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: 'none', background: posting ? S.border : S.blue, color: posting ? S.text3 : '#fff', cursor: posting ? 'default' : 'pointer' }}>
+                    {posting ? '...' : 'Post'}
+                  </button>
                 </div>
               </div>
             </Card>
@@ -547,6 +652,7 @@ export default function Home() {
               ['Tax rate on negative users', '25%'],
               ['Daily check-in reward', '+5 🔥'],
               ['Cost to send +50 vote', '5 aura'],
+              ['Negative votes', 'Free'],
             ].map(([label, val]) => (
               <div key={label as string} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: `1px solid ${S.border}` }}>
                 <span style={{ fontSize: 13, color: S.text2 }}>{label}</span>
@@ -559,12 +665,14 @@ export default function Home() {
         {tab === 'help' && <>
           {[
             { title: '🔥 What is aura?', body: 'Your score on this site. Post something, people vote on it, your aura goes up or down. Simple.' },
-            { title: '🗳️ Voting', body: 'Vote +1 to +50 or negative on any post. Voting costs you a small amount of your own aura — sending +10 costs you 1, sending +50 costs you 5. Votes mean something.' },
+            { title: '🗳️ Voting', body: 'Vote +1 to +50 or negative on any post. Positive votes cost you a small amount of your own aura. Negative votes are free.' },
             { title: '📊 Profile votes', body: 'You can vote on someone\'s whole profile, not just their posts. Tap their name or avatar anywhere to pull up their profile and rate their vibe.' },
             { title: '🤡 Negative aura', body: 'Drop below 0 and clown emojis start showing on your profile. You also only keep 75% of aura you earn while negative — the rest goes into the prize pool.' },
             { title: '🏆 Prize pool', body: 'Every Sunday at midnight, whoever has the highest-aura post that week wins the entire pool. The pool fills from the 25% tax on negative users.' },
             { title: '🔥 Streaks', body: 'Hit Check In every day for +5 aura. Miss a day and your streak resets to zero.' },
-            { title: '🚫 Glazing', body: 'Max 3 big votes (+50 or -10) to the same person per 24 hours. Go over that and you get hit with -50. Don\'t glaze.' },
+            { title: '🚫 Glazing', body: 'Max 3 big votes (+50 or -50) to the same person per 24 hours. Go over that and you get hit with -50. Don\'t glaze.' },
+            { title: '💬 Comments', body: 'Tap the comment button on any post to see and leave comments.' },
+            { title: '📒 Ledger', body: 'Go to your Profile and tap Ledger to see every aura transaction — what you gained, lost, and when.' },
           ].map(item => (
             <Card key={item.title} style={{ padding: 18, marginBottom: 10 }}>
               <div style={{ fontWeight: 600, fontSize: 15, color: S.text, marginBottom: 8 }}>{item.title}</div>
@@ -580,7 +688,7 @@ export default function Home() {
               background: clownCount(profile.aura) > 0
                 ? `repeating-linear-gradient(45deg,${S.redDim} 0,${S.redDim} 12px,${S.card} 12px,${S.card} 24px)`
                 : `linear-gradient(135deg, ${S.blueDim}, ${S.card})`,
-              backgroundImage: (profile as any).banner_url ? `url(${(profile as any).banner_url})` : undefined,
+              backgroundImage: profile.banner_url ? `url(${profile.banner_url})` : undefined,
               backgroundSize: 'cover',
               backgroundPosition: 'center',
               position: 'relative',
@@ -604,8 +712,8 @@ export default function Home() {
                 {editingBio ? (
                   <div>
                     <textarea
-                      value={bioText}
-                      onChange={e => setBioText(e.target.value)}
+                      defaultValue={profile.bio || ''}
+                      onChange={e => { bioRef.current = e.target.value }}
                       placeholder="say something..."
                       rows={2}
                       dir="ltr"
@@ -619,7 +727,7 @@ export default function Home() {
                 ) : (
                   <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
                     <p style={{ fontSize: 14, color: profile.bio ? S.text2 : S.text3, flex: 1, lineHeight: 1.5 }}>{profile.bio || 'No bio yet.'}</p>
-                    <button onClick={() => { setEditingBio(true); setBioText(profile.bio || '') }} style={{ fontSize: 11, color: S.text3, background: 'none', border: `1px solid ${S.border}`, borderRadius: 7, padding: '4px 10px', cursor: 'pointer', flexShrink: 0 }}>Edit</button>
+                    <button onClick={() => { setEditingBio(true); bioRef.current = profile.bio || '' }} style={{ fontSize: 11, color: S.text3, background: 'none', border: `1px solid ${S.border}`, borderRadius: 7, padding: '4px 10px', cursor: 'pointer', flexShrink: 0 }}>Edit</button>
                   </div>
                 )}
               </div>
@@ -635,13 +743,36 @@ export default function Home() {
                   </div>
                 ))}
               </div>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
                 {getBadges(profile).map(b => (
                   <span key={b} style={{ fontSize: 11, padding: '4px 11px', borderRadius: 20, background: S.card2, border: `1px solid ${S.border2}`, color: S.text2 }}>{b}</span>
                 ))}
               </div>
+              <button onClick={() => { setShowLedger(!showLedger); if (!showLedger) loadLedger() }} style={{ padding: '8px 18px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: `1px solid ${S.border2}`, background: showLedger ? S.blue : 'transparent', color: showLedger ? '#fff' : S.text2, cursor: 'pointer' }}>
+                📒 {showLedger ? 'Hide Ledger' : 'View Ledger'}
+              </button>
             </div>
           </Card>
+
+          {showLedger && (
+            <Card style={{ padding: 20, marginBottom: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 600, color: S.text3, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 14 }}>Aura Ledger</div>
+              {ledger.length === 0 && <p style={{ fontSize: 13, color: S.text3 }}>No transactions yet.</p>}
+              {ledger.map(e => (
+                <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: `1px solid ${S.border}` }}>
+                  <div>
+                    <div style={{ fontSize: 13, color: S.text }}>{e.description}</div>
+                    <div style={{ fontSize: 11, color: S.text3, marginTop: 2 }}>{timeAgo(e.created_at)}</div>
+                  </div>
+                  <div style={{ textAlign: 'right' }}>
+                    <div style={{ fontFamily: 'monospace', fontSize: 14, fontWeight: 700, color: e.amount >= 0 ? S.blue : S.red }}>{e.amount >= 0 ? '+' : ''}{e.amount}</div>
+                    <div style={{ fontFamily: 'monospace', fontSize: 11, color: S.text3 }}>bal: {e.balance_after}</div>
+                  </div>
+                </div>
+              ))}
+            </Card>
+          )}
+
           <div style={{ fontSize: 11, fontWeight: 600, color: S.text3, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 10 }}>Your Posts</div>
           {posts.filter(p => p.user_id === profile.id).length === 0
             ? <p style={{ fontSize: 14, color: S.text3, textAlign: 'center', padding: '30px 0' }}>No posts yet.</p>
