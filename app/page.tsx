@@ -64,9 +64,9 @@ const CommentInput = memo(({ postId, profile, onSubmit }: { postId: number; prof
 })
 CommentInput.displayName = 'CommentInput'
 
-const PostCard = memo(({ post, profile, profiles, myVote, comments, isCommentsOpen, onVote, onOpenProfile, onToggleComments, onComment }: {
+const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount, isCommentsOpen, onVote, onOpenProfile, onToggleComments, onComment }: {
   post: any; profile: any; profiles: any[]; myVote: number | undefined;
-  comments: any[]; isCommentsOpen: boolean;
+  comments: any[]; commentCount: number; isCommentsOpen: boolean;
   onVote: (postId: number, val: number) => void;
   onOpenProfile: (p: any) => void;
   onToggleComments: (postId: number) => void;
@@ -121,7 +121,7 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, isCommentsOp
 
       <div style={{ borderTop: `1px solid ${S.border}` }}>
         <button onClick={() => onToggleComments(post.id)} style={{ width: '100%', padding: '10px 16px', background: 'transparent', border: 'none', color: S.text3, fontSize: 12, cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 6 }}>
-          💬 {isCommentsOpen ? 'Hide comments' : `Comments${comments.length > 0 ? ` (${comments.length})` : ''}`}
+          💬 {commentCount > 0 ? `${commentCount} comment${commentCount !== 1 ? 's' : ''}` : 'Add a comment'} {isCommentsOpen ? '▲' : '▼'}
         </button>
         {isCommentsOpen && (
           <div style={{ padding: '0 16px 14px' }}>
@@ -153,6 +153,7 @@ export default function Home() {
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [posts, setPosts] = useState<Post[]>([])
   const [myVotes, setMyVotes] = useState<Record<number, number>>({})
+  const [commentCounts, setCommentCounts] = useState<Record<number, number>>({})
   const [tab, setTab] = useState('feed')
   const [lbTab, setLbTab] = useState('people')
   const [filter, setFilter] = useState('recent')
@@ -182,30 +183,47 @@ export default function Home() {
     })
   }, [])
 
+  const applyLoginPenalty = async (uid: string, prof: Profile) => {
+    const today = new Date().toISOString().split('T')[0]
+    const lastCheckin = prof.last_checkin
+    if (!lastCheckin) return
+    const daysSince = Math.floor((Date.now() - new Date(lastCheckin).getTime()) / 86400000)
+    if (daysSince <= 1) return
+    const penalty = Math.min(daysSince * 2, 20)
+    const newAura = Math.round((prof.aura - penalty) * 10) / 10
+    await supabase.from('profiles').update({ aura: newAura, streak: 0 }).eq('id', uid)
+    await supabase.from('aura_ledger').insert({ user_id: uid, amount: -penalty, type: 'inactivity', description: `Missed ${daysSince} days — streak reset`, balance_after: newAura })
+    return { newAura, penalty }
+  }
+
   const loadAll = async (uid: string) => {
-    const [{ data: profs }, { data: ps }, { data: bucket }, { data: vs }] = await Promise.all([
+    const [{ data: profs }, { data: ps }, { data: bucket }, { data: vs }, { data: counts }] = await Promise.all([
       supabase.from('profiles').select('*'),
       supabase.from('posts').select('*, profiles(*)').order('created_at', { ascending: false }),
       supabase.from('tax_bucket').select('*').single(),
       supabase.from('votes').select('*').eq('voter_id', uid),
+      supabase.from('post_comment_counts').select('*'),
     ])
-    if (profs) { setProfiles(profs); setProfile(profs.find((p: Profile) => p.id === uid) || null) }
+    if (profs) {
+      setProfiles(profs)
+      const myProf = profs.find((p: Profile) => p.id === uid)
+      if (myProf) {
+        const result = await applyLoginPenalty(uid, myProf)
+        if (result) {
+          setProfile({ ...myProf, aura: result.newAura, streak: 0 })
+          setProfiles(profs.map((p: Profile) => p.id === uid ? { ...p, aura: result.newAura, streak: 0 } : p))
+          notify(`📉 −${result.penalty} aura for missing days`, 'neg')
+        } else {
+          setProfile(myProf)
+        }
+      }
+    }
     if (ps) setPosts(ps)
     if (bucket) setTaxBucket(bucket.amount)
     if (vs) { const m: Record<number, number> = {}; vs.forEach((v: any) => m[v.post_id] = v.value); setMyVotes(m) }
+    if (counts) { const m: Record<number, number> = {}; counts.forEach((c: any) => m[c.post_id] = Number(c.count)); setCommentCounts(m) }
     const { data: pvs } = await supabase.from('profile_votes').select('*').eq('voter_id', uid)
     if (pvs) { const m: Record<string, number> = {}; pvs.forEach((v: any) => m[v.target_id] = v.value); setProfileVotes(m) }
-  }
-
-  const loadComments = async (postId: number) => {
-    const { data } = await supabase.from('comments').select('*, profiles(*)').eq('post_id', postId).order('created_at', { ascending: true })
-    if (data) setComments(c => ({ ...c, [postId]: data }))
-  }
-
-  const loadLedger = async () => {
-    if (!profile) return
-    const { data } = await supabase.from('aura_ledger').select('*').eq('user_id', profile.id).order('created_at', { ascending: false }).limit(50)
-    if (data) setLedger(data)
   }
 
   const notify = (msg: string, type = 'neutral') => {
@@ -250,7 +268,7 @@ export default function Home() {
       }
       const newOwnerAura = Math.round((owner.aura + gain) * 10) / 10
       await supabase.from('profiles').update({ aura: newOwnerAura }).eq('id', owner.id)
-      await addLedgerEntry(owner.id, gain, 'post_vote', `Vote on your post`, newOwnerAura)
+      await addLedgerEntry(owner.id, gain, 'post_vote', `${gain > 0 ? '+' : ''}${val} vote on your post`, newOwnerAura)
     }
     setMyVotes(v => ({ ...v, [postId]: val }))
     setPosts(ps => ps.map(p => p.id === postId ? { ...p, aura: newPostAura } : p))
@@ -330,7 +348,10 @@ export default function Home() {
   const handleComment = async (postId: number, text: string) => {
     if (!profile || !text.trim()) return
     const { data } = await supabase.from('comments').insert({ post_id: postId, user_id: profile.id, text: text.trim() }).select('*, profiles(*)').single()
-    if (data) setComments(c => ({ ...c, [postId]: [...(c[postId] || []), data] }))
+    if (data) {
+      setComments(c => ({ ...c, [postId]: [...(c[postId] || []), data] }))
+      setCommentCounts(c => ({ ...c, [postId]: (c[postId] || 0) + 1 }))
+    }
   }
 
   const handleToggleComments = async (postId: number) => {
@@ -597,6 +618,7 @@ export default function Home() {
               profiles={profiles}
               myVote={myVotes[p.id]}
               comments={comments[p.id] || []}
+              commentCount={commentCounts[p.id] || 0}
               isCommentsOpen={openComments[p.id] || false}
               onVote={handleVote}
               onOpenProfile={setModalProfile}
@@ -679,6 +701,7 @@ export default function Home() {
               ['Users in clown mode', `${profiles.filter(u => u.aura < 0).length} 🤡`],
               ['Tax rate on negative users', '25%'],
               ['Daily check-in reward', '+5 🔥'],
+              ['Missed day penalty', '−2 per day missed'],
               ['Cost to send +50 vote', '5 aura'],
               ['Negative votes', 'Free'],
             ].map(([label, val]) => (
@@ -697,7 +720,7 @@ export default function Home() {
             { title: '📊 Profile votes', body: "You can vote on someone's whole profile, not just their posts. Tap their name or avatar anywhere to pull up their profile and rate their vibe." },
             { title: '🤡 Negative aura', body: 'Drop below 0 and clown emojis start showing on your profile. You also only keep 75% of aura you earn while negative — the rest goes into the prize pool.' },
             { title: '🏆 Prize pool', body: 'Every Sunday at midnight, whoever has the highest-aura post that week wins the entire pool. The pool fills from the 25% tax on negative users.' },
-            { title: '🔥 Streaks', body: 'Hit Check In every day for +5 aura. Miss a day and your streak resets to zero.' },
+            { title: '🔥 Streaks', body: 'Hit Check In every day for +5 aura. Miss a day and your streak resets and you lose 2 aura per missed day (max 20). Log in daily or fall behind.' },
             { title: '🚫 Glazing', body: "Max 3 big votes (+50 or -50) to the same person per 24 hours. Go over that and you get hit with -50. Don't glaze." },
             { title: '💬 Comments', body: 'Tap the comment button on any post to see and leave comments.' },
             { title: '📒 Ledger', body: 'Go to your Profile and tap Ledger to see every aura transaction — what you gained, lost, and when.' },
@@ -717,9 +740,7 @@ export default function Home() {
                 ? `repeating-linear-gradient(45deg,${S.redDim} 0,${S.redDim} 12px,${S.card} 12px,${S.card} 24px)`
                 : `linear-gradient(135deg, ${S.blueDim}, ${S.card})`,
               backgroundImage: profile.banner_url ? `url(${profile.banner_url})` : undefined,
-              backgroundSize: 'cover',
-              backgroundPosition: 'center',
-              position: 'relative',
+              backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative',
             }}>
               <label style={{ position: 'absolute', bottom: 10, right: 10, cursor: 'pointer', background: 'rgba(0,0,0,.6)', border: `1px solid ${S.border2}`, borderRadius: 8, padding: '5px 12px', fontSize: 12, color: '#fff', display: 'flex', alignItems: 'center', gap: 5 }}>
                 📷 Edit banner
@@ -812,6 +833,7 @@ export default function Home() {
                 profiles={profiles}
                 myVote={myVotes[p.id]}
                 comments={comments[p.id] || []}
+                commentCount={commentCounts[p.id] || 0}
                 isCommentsOpen={openComments[p.id] || false}
                 onVote={handleVote}
                 onOpenProfile={setModalProfile}
