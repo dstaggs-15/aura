@@ -39,7 +39,9 @@ const Card = ({ children, style = {} }: any) => (
   <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 16, ...style }}>{children}</div>
 )
 
-const CommentInput = memo(({ postId, profile, onSubmit }: { postId: number; profile: any; onSubmit: (postId: number, text: string) => void }) => {
+const CommentInput = memo(({ postId, profile, onSubmit }: {
+  postId: number; profile: any; onSubmit: (postId: number, text: string) => void
+}) => {
   const inputRef = useRef<HTMLInputElement>(null)
   const handleSubmit = () => {
     const text = inputRef.current?.value?.trim()
@@ -50,23 +52,31 @@ const CommentInput = memo(({ postId, profile, onSubmit }: { postId: number; prof
   return (
     <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
       <Av p={profile} size={26} />
-      <input
-        ref={inputRef}
-        type="text"
-        placeholder="add a comment..."
-        dir="ltr"
+      <input ref={inputRef} type="text" placeholder="add a comment..." dir="ltr"
         onKeyDown={e => { if (e.key === 'Enter') handleSubmit() }}
-        style={{ flex: 1, background: S.card2, border: `1px solid ${S.border2}`, borderRadius: 20, padding: '7px 14px', fontSize: 13, color: S.text, outline: 'none', fontFamily: 'inherit', direction: 'ltr' } as any}
-      />
+        style={{ flex: 1, background: S.card2, border: `1px solid ${S.border2}`, borderRadius: 20, padding: '7px 14px', fontSize: 13, color: S.text, outline: 'none', fontFamily: 'inherit', direction: 'ltr' } as any} />
       <button onClick={handleSubmit} style={{ padding: '7px 14px', borderRadius: 20, background: S.blue, border: 'none', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Post</button>
     </div>
   )
 })
 CommentInput.displayName = 'CommentInput'
 
-const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount, isCommentsOpen, onVote, onOpenProfile, onToggleComments, onComment }: {
+const renderText = (text: string, color = '#ccc') => {
+  const parts = text.split(/(@\w+)/g)
+  return (
+    <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color, unicodeBidi: 'plaintext', textAlign: 'left' } as any}>
+      {parts.map((part, i) =>
+        part.startsWith('@')
+          ? <span key={i} style={{ color: S.blue, fontWeight: 600 }}>{part}</span>
+          : part
+      )}
+    </p>
+  )
+}
+
+const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount, isCommentsOpen, tags, onVote, onOpenProfile, onToggleComments, onComment }: {
   post: any; profile: any; profiles: any[]; myVote: number | undefined;
-  comments: any[]; commentCount: number; isCommentsOpen: boolean;
+  comments: any[]; commentCount: number; isCommentsOpen: boolean; tags: string[];
   onVote: (postId: number, val: number) => void;
   onOpenProfile: (p: any) => void;
   onToggleComments: (postId: number) => void;
@@ -76,6 +86,7 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
   if (!owner) return null
   const isOwn = post.user_id === profile?.id
   const cc = clownCount(owner.aura)
+  const taggedUsers = tags.map(id => profiles.find((p: any) => p.id === id)).filter(Boolean)
 
   return (
     <Card style={{ marginBottom: 8 }}>
@@ -90,7 +101,16 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
             {owner.streak >= 3 && <span style={{ fontSize: 12, color: S.fire }}>🔥{owner.streak}</span>}
             <span style={{ fontSize: 11, color: S.text3, marginLeft: 'auto' }}>{timeAgo(post.created_at)}</span>
           </div>
-          <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color: '#ccc', unicodeBidi: 'plaintext', textAlign: 'left' } as any}>{post.text}</p>
+          {renderText(post.text)}
+          {taggedUsers.length > 0 && (
+            <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 8 }}>
+              {taggedUsers.map((u: any) => (
+                <span key={u.id} onClick={() => onOpenProfile(u)} style={{ fontSize: 11, color: S.blue, background: S.blueDim, padding: '2px 8px', borderRadius: 20, cursor: 'pointer', fontWeight: 500 }}>
+                  📍 {u.username}
+                </span>
+              ))}
+            </div>
+          )}
           {post.image_url && (
             <img src={post.image_url} alt="post" style={{ width: '100%', borderRadius: 10, marginTop: 10, maxHeight: 400, objectFit: 'contain', background: S.card2 }} />
           )}
@@ -108,7 +128,7 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
                 return (
                   <button key={v} onClick={() => onVote(post.id, v)} style={{
                     padding: '4px 8px', borderRadius: 7, fontSize: 11, fontWeight: 700,
-                    fontFamily: 'monospace', cursor: 'pointer', transition: 'all .1s',
+                    fontFamily: 'monospace', cursor: 'pointer',
                     border: `1px solid ${active ? 'transparent' : S.border2}`,
                     background: active ? (neg ? S.red : S.blue) : S.card2,
                     color: active ? '#fff' : (neg ? S.red : S.blue),
@@ -134,7 +154,7 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
                   <Av p={cu} size={26} />
                   <div style={{ flex: 1, background: S.card2, borderRadius: 10, padding: '8px 12px' }}>
                     <div style={{ fontWeight: 600, fontSize: 12, color: S.text, marginBottom: 3 }}>{cu.username}</div>
-                    <p style={{ fontSize: 13, color: '#ccc', margin: 0, lineHeight: 1.5 }}>{c.text}</p>
+                    {renderText(c.text, '#ccc')}
                   </div>
                 </div>
               )
@@ -148,18 +168,33 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
 })
 PostCard.displayName = 'PostCard'
 
+const TagPicker = ({ profiles, selected, onToggle, onClose }: { profiles: any[], selected: string[], onToggle: (id: string) => void, onClose: () => void }) => (
+  <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100, background: S.card, border: `1px solid ${S.border2}`, borderRadius: 12, maxHeight: 200, overflowY: 'auto', marginTop: 4 }}>
+    {profiles.map(p => (
+      <div key={p.id} onClick={() => onToggle(p.id)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', cursor: 'pointer', background: selected.includes(p.id) ? S.blueDim : 'transparent', borderBottom: `1px solid ${S.border}` }}>
+        <Av p={p} size={28} />
+        <span style={{ fontSize: 13, color: S.text }}>{p.username}</span>
+        {selected.includes(p.id) && <span style={{ marginLeft: 'auto', color: S.blue, fontSize: 12 }}>✓ Tagged</span>}
+      </div>
+    ))}
+  </div>
+)
+
 export default function Home() {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [profiles, setProfiles] = useState<Profile[]>([])
   const [posts, setPosts] = useState<Post[]>([])
   const [myVotes, setMyVotes] = useState<Record<number, number>>({})
   const [commentCounts, setCommentCounts] = useState<Record<number, number>>({})
+  const [postTags, setPostTags] = useState<Record<number, string[]>>({})
   const [tab, setTab] = useState('feed')
   const [lbTab, setLbTab] = useState('people')
   const [filter, setFilter] = useState('recent')
   const [composing, setComposing] = useState(false)
   const [posting, setPosting] = useState(false)
   const [postImage, setPostImage] = useState<File | null>(null)
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
+  const [showTagPicker, setShowTagPicker] = useState(false)
   const [taxBucket, setTaxBucket] = useState(0)
   const [toast, setToast] = useState<{ msg: string; type: string } | null>(null)
   const [modalProfile, setModalProfile] = useState<Profile | null>(null)
@@ -184,10 +219,8 @@ export default function Home() {
   }, [])
 
   const applyLoginPenalty = async (uid: string, prof: Profile) => {
-    const today = new Date().toISOString().split('T')[0]
-    const lastCheckin = prof.last_checkin
-    if (!lastCheckin) return
-    const daysSince = Math.floor((Date.now() - new Date(lastCheckin).getTime()) / 86400000)
+    if (!prof.last_checkin) return
+    const daysSince = Math.floor((Date.now() - new Date(prof.last_checkin).getTime()) / 86400000)
     if (daysSince <= 1) return
     const penalty = Math.min(daysSince * 2, 20)
     const newAura = Math.round((prof.aura - penalty) * 10) / 10
@@ -197,12 +230,13 @@ export default function Home() {
   }
 
   const loadAll = async (uid: string) => {
-    const [{ data: profs }, { data: ps }, { data: bucket }, { data: vs }, { data: counts }] = await Promise.all([
+    const [{ data: profs }, { data: ps }, { data: bucket }, { data: vs }, { data: counts }, { data: tags }] = await Promise.all([
       supabase.from('profiles').select('*'),
       supabase.from('posts').select('*, profiles(*)').order('created_at', { ascending: false }),
       supabase.from('tax_bucket').select('*').single(),
       supabase.from('votes').select('*').eq('voter_id', uid),
       supabase.from('post_comment_counts').select('*'),
+      supabase.from('post_tags').select('*'),
     ])
     if (profs) {
       setProfiles(profs)
@@ -222,6 +256,11 @@ export default function Home() {
     if (bucket) setTaxBucket(bucket.amount)
     if (vs) { const m: Record<number, number> = {}; vs.forEach((v: any) => m[v.post_id] = v.value); setMyVotes(m) }
     if (counts) { const m: Record<number, number> = {}; counts.forEach((c: any) => m[c.post_id] = Number(c.count)); setCommentCounts(m) }
+    if (tags) {
+      const m: Record<number, string[]> = {}
+      tags.forEach((t: any) => { if (!m[t.post_id]) m[t.post_id] = []; m[t.post_id].push(t.tagged_user_id) })
+      setPostTags(m)
+    }
     const { data: pvs } = await supabase.from('profile_votes').select('*').eq('voter_id', uid)
     if (pvs) { const m: Record<string, number> = {}; pvs.forEach((v: any) => m[v.target_id] = v.value); setProfileVotes(m) }
   }
@@ -268,7 +307,21 @@ export default function Home() {
       }
       const newOwnerAura = Math.round((owner.aura + gain) * 10) / 10
       await supabase.from('profiles').update({ aura: newOwnerAura }).eq('id', owner.id)
-      await addLedgerEntry(owner.id, gain, 'post_vote', `${gain > 0 ? '+' : ''}${val} vote on your post`, newOwnerAura)
+      await addLedgerEntry(owner.id, gain, 'post_vote', `${val > 0 ? '+' : ''}${val} vote on your post`, newOwnerAura)
+
+      // Give tagged users 50% of owner's gain
+      const tagged = postTags[postId] || []
+      for (const taggedId of tagged) {
+        if (taggedId === owner.id || taggedId === profile.id) continue
+        const taggedUser = profiles.find(p => p.id === taggedId)
+        if (!taggedUser) continue
+        const taggedGain = Math.round((gain * 0.5) * 10) / 10
+        if (taggedGain === 0) continue
+        const newTaggedAura = Math.round((taggedUser.aura + taggedGain) * 10) / 10
+        await supabase.from('profiles').update({ aura: newTaggedAura }).eq('id', taggedId)
+        await addLedgerEntry(taggedId, taggedGain, 'tag_share', `Tagged in a post that got voted`, newTaggedAura)
+        setProfiles(ps => ps.map(p => p.id === taggedId ? { ...p, aura: newTaggedAura } : p))
+      }
     }
     setMyVotes(v => ({ ...v, [postId]: val }))
     setPosts(ps => ps.map(p => p.id === postId ? { ...p, aura: newPostAura } : p))
@@ -334,11 +387,16 @@ export default function Home() {
     }
     const { data } = await supabase.from('posts').insert({ user_id: profile.id, text: draftRef.current.trim(), aura: 0, image_url }).select('*, profiles(*)').single()
     if (data) {
+      if (selectedTags.length > 0) {
+        await supabase.from('post_tags').insert(selectedTags.map(uid => ({ post_id: data.id, tagged_user_id: uid })))
+        setPostTags(t => ({ ...t, [data.id]: selectedTags }))
+      }
       setPosts(ps => [data, ...ps])
       draftRef.current = ''
       const ta = document.getElementById('post-textarea') as HTMLTextAreaElement
       if (ta) ta.value = ''
       setPostImage(null)
+      setSelectedTags([])
       setComposing(false)
       notify('Posted 🔥')
     }
@@ -399,6 +457,12 @@ export default function Home() {
     notify('Bio saved', 'pos')
   }
 
+  const loadLedger = async () => {
+    if (!profile) return
+    const { data } = await supabase.from('aura_ledger').select('*').eq('user_id', profile.id).order('created_at', { ascending: false }).limit(50)
+    if (data) setLedger(data)
+  }
+
   const handleLogout = async () => {
     await supabase.auth.signOut()
     window.location.href = '/auth'
@@ -425,6 +489,7 @@ export default function Home() {
     </div>
   )
 
+  const otherProfiles = profiles.filter(p => p.id !== profile.id)
   const TABS = ['feed', 'leaderboard', 'bank', 'help', 'profile']
 
   return (
@@ -438,34 +503,19 @@ export default function Home() {
         ::-webkit-scrollbar-track { background: ${S.bg}; }
         ::-webkit-scrollbar-thumb { background: ${S.border2}; border-radius: 4px; }
         textarea, input[type="text"], input[type="email"], input[type="password"] {
-          direction: ltr !important;
-          unicode-bidi: plaintext !important;
-          text-align: left !important;
+          direction: ltr !important; unicode-bidi: plaintext !important; text-align: left !important;
         }
       `}</style>
 
       {toast && (
-        <div style={{
-          position: 'fixed', top: 16, left: '50%', zIndex: 999, pointerEvents: 'none',
-          transform: 'translateX(-50%)', animation: 'toastIn .2s ease',
-          background: toast.type === 'pos' ? S.blue : toast.type === 'neg' ? S.red : '#222',
-          color: '#fff', padding: '9px 20px', borderRadius: 99, fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap',
-        }}>{toast.msg}</div>
+        <div style={{ position: 'fixed', top: 16, left: '50%', zIndex: 999, pointerEvents: 'none', transform: 'translateX(-50%)', animation: 'toastIn .2s ease', background: toast.type === 'pos' ? S.blue : toast.type === 'neg' ? S.red : '#222', color: '#fff', padding: '9px 20px', borderRadius: 99, fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap' }}>{toast.msg}</div>
       )}
 
       {modalProfile && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, backdropFilter: 'blur(4px)' }}
           onClick={() => { setModalProfile(null); setEditingBio(false) }}>
           <div onClick={e => e.stopPropagation()} style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 20, width: '100%', maxWidth: 440, maxHeight: '88vh', overflowY: 'auto' }}>
-            <div style={{
-              height: 90,
-              background: clownCount(modalProfile.aura) > 0
-                ? `repeating-linear-gradient(45deg,${S.redDim} 0,${S.redDim} 12px,${S.card} 12px,${S.card} 24px)`
-                : `linear-gradient(135deg, ${S.blueDim}, ${S.card})`,
-              backgroundImage: modalProfile.banner_url ? `url(${modalProfile.banner_url})` : undefined,
-              backgroundSize: 'cover', backgroundPosition: 'center',
-              borderRadius: '20px 20px 0 0', position: 'relative'
-            }}>
+            <div style={{ height: 90, background: clownCount(modalProfile.aura) > 0 ? `repeating-linear-gradient(45deg,${S.redDim} 0,${S.redDim} 12px,${S.card} 12px,${S.card} 24px)` : `linear-gradient(135deg, ${S.blueDim}, ${S.card})`, backgroundImage: modalProfile.banner_url ? `url(${modalProfile.banner_url})` : undefined, backgroundSize: 'cover', backgroundPosition: 'center', borderRadius: '20px 20px 0 0', position: 'relative' }}>
               <button onClick={() => setModalProfile(null)} style={{ position: 'absolute', top: 12, right: 12, width: 30, height: 30, borderRadius: '50%', background: 'rgba(0,0,0,.5)', border: `1px solid ${S.border2}`, cursor: 'pointer', fontSize: 14, color: '#fff' }}>✕</button>
             </div>
             <div style={{ padding: '0 20px 24px', marginTop: -22 }}>
@@ -494,13 +544,7 @@ export default function Home() {
                       const active = profileVotes[modalProfile.id] === v
                       const neg = v < 0
                       return (
-                        <button key={v} onClick={() => handleProfileVote(modalProfile.id, v)} style={{
-                          padding: '5px 9px', borderRadius: 7, fontSize: 11, fontWeight: 700,
-                          fontFamily: 'monospace', cursor: 'pointer',
-                          border: `1px solid ${active ? 'transparent' : S.border2}`,
-                          background: active ? (neg ? S.red : S.blue) : S.card2,
-                          color: active ? '#fff' : (neg ? S.red : S.blue),
-                        }}>{v > 0 ? `+${v}` : v}</button>
+                        <button key={v} onClick={() => handleProfileVote(modalProfile.id, v)} style={{ padding: '5px 9px', borderRadius: 7, fontSize: 11, fontWeight: 700, fontFamily: 'monospace', cursor: 'pointer', border: `1px solid ${active ? 'transparent' : S.border2}`, background: active ? (neg ? S.red : S.blue) : S.card2, color: active ? '#fff' : (neg ? S.red : S.blue) }}>{v > 0 ? `+${v}` : v}</button>
                       )
                     })}
                   </div>
@@ -545,9 +589,7 @@ export default function Home() {
         <span>🏆</span>
         <span style={{ fontFamily: 'monospace', fontWeight: 700, color: S.text }}>{taxBucket.toFixed(1)} aura</span>
         <span style={{ color: S.border2 }}>·</span>
-        <span>in the prize pool</span>
-        <span style={{ color: S.border2 }}>·</span>
-        <span>top post wins Sunday</span>
+        <span>in the prize pool · top post wins Sunday</span>
         {topPostUser && <><span style={{ color: S.border2 }}>·</span><span style={{ color: S.blue }}>👑 {topPostUser.username} leading</span></>}
       </div>
 
@@ -566,16 +608,8 @@ export default function Home() {
             <Card style={{ padding: 16, marginBottom: 10 }}>
               <div style={{ display: 'flex', gap: 11, marginBottom: 12 }}>
                 <Av p={profile} size={36} />
-                <textarea
-                  id="post-textarea"
-                  defaultValue=""
-                  onChange={e => { draftRef.current = e.target.value }}
-                  placeholder="what happened?"
-                  rows={3}
-                  dir="ltr"
-                  autoComplete="off"
-                  style={{ flex: 1, border: 'none', background: 'transparent', color: S.text, fontSize: 16, lineHeight: 1.6, resize: 'none', fontFamily: 'inherit', outline: 'none', direction: 'ltr', unicodeBidi: 'plaintext', textAlign: 'left' } as any}
-                />
+                <textarea id="post-textarea" defaultValue="" onChange={e => { draftRef.current = e.target.value }} placeholder="what happened?" rows={3} dir="ltr" autoComplete="off"
+                  style={{ flex: 1, border: 'none', background: 'transparent', color: S.text, fontSize: 16, lineHeight: 1.6, resize: 'none', fontFamily: 'inherit', outline: 'none', direction: 'ltr', unicodeBidi: 'plaintext', textAlign: 'left' } as any} />
               </div>
               {postImage && (
                 <div style={{ marginBottom: 10, position: 'relative' }}>
@@ -583,17 +617,45 @@ export default function Home() {
                   <button onClick={() => setPostImage(null)} style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,.6)', border: 'none', color: '#fff', borderRadius: '50%', width: 24, height: 24, cursor: 'pointer', fontSize: 12 }}>✕</button>
                 </div>
               )}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <label style={{ cursor: 'pointer', color: postImage ? S.blue : S.text3, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, border: `1px solid ${postImage ? S.blue : S.border}`, background: postImage ? S.blueDim : 'transparent' }}>
-                  📷 {postImage ? 'Photo added' : 'Add photo'}
-                  <input ref={postImageRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => setPostImage(e.target.files?.[0] || null)} />
-                </label>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={() => { setComposing(false); draftRef.current = ''; setPostImage(null) }} style={{ padding: '7px 16px', borderRadius: 10, fontSize: 13, border: `1px solid ${S.border2}`, background: 'transparent', color: S.text2, cursor: 'pointer' }}>Cancel</button>
-                  <button onClick={handlePost} disabled={posting} style={{ padding: '7px 18px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: 'none', background: posting ? S.border : S.blue, color: posting ? S.text3 : '#fff', cursor: posting ? 'default' : 'pointer' }}>
-                    {posting ? '...' : 'Post'}
-                  </button>
+              {selectedTags.length > 0 && (
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+                  {selectedTags.map(id => {
+                    const u = profiles.find(p => p.id === id)
+                    return u ? (
+                      <span key={id} style={{ fontSize: 12, color: S.blue, background: S.blueDim, padding: '3px 10px', borderRadius: 20, display: 'flex', alignItems: 'center', gap: 5 }}>
+                        📍 {u.username}
+                        <span onClick={() => setSelectedTags(t => t.filter(x => x !== id))} style={{ cursor: 'pointer', opacity: .7 }}>✕</span>
+                      </span>
+                    ) : null
+                  })}
                 </div>
+              )}
+              <div style={{ position: 'relative' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <label style={{ cursor: 'pointer', color: postImage ? S.blue : S.text3, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, border: `1px solid ${postImage ? S.blue : S.border}`, background: postImage ? S.blueDim : 'transparent' }}>
+                      📷 {postImage ? 'Photo added' : 'Add photo'}
+                      <input ref={postImageRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => setPostImage(e.target.files?.[0] || null)} />
+                    </label>
+                    <button onClick={() => setShowTagPicker(!showTagPicker)} style={{ cursor: 'pointer', color: selectedTags.length > 0 ? S.blue : S.text3, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, border: `1px solid ${selectedTags.length > 0 ? S.blue : S.border}`, background: selectedTags.length > 0 ? S.blueDim : 'transparent' }}>
+                      📍 {selectedTags.length > 0 ? `${selectedTags.length} tagged` : 'Tag people'}
+                    </button>
+                  </div>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button onClick={() => { setComposing(false); draftRef.current = ''; setPostImage(null); setSelectedTags([]) }} style={{ padding: '7px 16px', borderRadius: 10, fontSize: 13, border: `1px solid ${S.border2}`, background: 'transparent', color: S.text2, cursor: 'pointer' }}>Cancel</button>
+                    <button onClick={handlePost} disabled={posting} style={{ padding: '7px 18px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: 'none', background: posting ? S.border : S.blue, color: posting ? S.text3 : '#fff', cursor: posting ? 'default' : 'pointer' }}>
+                      {posting ? '...' : 'Post'}
+                    </button>
+                  </div>
+                </div>
+                {showTagPicker && (
+                  <TagPicker
+                    profiles={otherProfiles}
+                    selected={selectedTags}
+                    onToggle={id => setSelectedTags(t => t.includes(id) ? t.filter(x => x !== id) : [...t, id])}
+                    onClose={() => setShowTagPicker(false)}
+                  />
+                )}
               </div>
             </Card>
           ) : (
@@ -611,20 +673,11 @@ export default function Home() {
           </div>
           {sorted.length === 0 && <p style={{ color: S.text3, fontSize: 14, textAlign: 'center', padding: '40px 0' }}>No posts yet. Be the first 👆</p>}
           {sorted.map(p => (
-            <PostCard
-              key={p.id}
-              post={p}
-              profile={profile}
-              profiles={profiles}
-              myVote={myVotes[p.id]}
-              comments={comments[p.id] || []}
-              commentCount={commentCounts[p.id] || 0}
-              isCommentsOpen={openComments[p.id] || false}
-              onVote={handleVote}
-              onOpenProfile={setModalProfile}
-              onToggleComments={handleToggleComments}
-              onComment={handleComment}
-            />
+            <PostCard key={p.id} post={p} profile={profile} profiles={profiles} myVote={myVotes[p.id]}
+              comments={comments[p.id] || []} commentCount={commentCounts[p.id] || 0}
+              isCommentsOpen={openComments[p.id] || false} tags={postTags[p.id] || []}
+              onVote={handleVote} onOpenProfile={setModalProfile}
+              onToggleComments={handleToggleComments} onComment={handleComment} />
           ))}
         </>}
 
@@ -704,6 +757,7 @@ export default function Home() {
               ['Missed day penalty', '−2 per day missed'],
               ['Cost to send +50 vote', '5 aura'],
               ['Negative votes', 'Free'],
+              ['Tagged in a post', '50% of poster\'s gain'],
             ].map(([label, val]) => (
               <div key={label as string} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: `1px solid ${S.border}` }}>
                 <span style={{ fontSize: 13, color: S.text2 }}>{label}</span>
@@ -717,6 +771,7 @@ export default function Home() {
           {[
             { title: '🔥 What is aura?', body: 'Your score on this site. Post something, people vote on it, your aura goes up or down. Simple.' },
             { title: '🗳️ Voting', body: 'Vote +1 to +50 or negative on any post. Positive votes cost you a small amount of your own aura. Negative votes are free.' },
+            { title: '📍 Tagging', body: 'When making a post, tap "Tag people" to tag someone in it. If your post gets votes, tagged people earn 50% of what you earn. Tag people who are actually in the post.' },
             { title: '📊 Profile votes', body: "You can vote on someone's whole profile, not just their posts. Tap their name or avatar anywhere to pull up their profile and rate their vibe." },
             { title: '🤡 Negative aura', body: 'Drop below 0 and clown emojis start showing on your profile. You also only keep 75% of aura you earn while negative — the rest goes into the prize pool.' },
             { title: '🏆 Prize pool', body: 'Every Sunday at midnight, whoever has the highest-aura post that week wins the entire pool. The pool fills from the 25% tax on negative users.' },
@@ -734,14 +789,7 @@ export default function Home() {
 
         {tab === 'profile' && <>
           <Card style={{ overflow: 'hidden', marginBottom: 10 }}>
-            <div style={{
-              height: 120,
-              background: clownCount(profile.aura) > 0
-                ? `repeating-linear-gradient(45deg,${S.redDim} 0,${S.redDim} 12px,${S.card} 12px,${S.card} 24px)`
-                : `linear-gradient(135deg, ${S.blueDim}, ${S.card})`,
-              backgroundImage: profile.banner_url ? `url(${profile.banner_url})` : undefined,
-              backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative',
-            }}>
+            <div style={{ height: 120, background: clownCount(profile.aura) > 0 ? `repeating-linear-gradient(45deg,${S.redDim} 0,${S.redDim} 12px,${S.card} 12px,${S.card} 24px)` : `linear-gradient(135deg, ${S.blueDim}, ${S.card})`, backgroundImage: profile.banner_url ? `url(${profile.banner_url})` : undefined, backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative' }}>
               <label style={{ position: 'absolute', bottom: 10, right: 10, cursor: 'pointer', background: 'rgba(0,0,0,.6)', border: `1px solid ${S.border2}`, borderRadius: 8, padding: '5px 12px', fontSize: 12, color: '#fff', display: 'flex', alignItems: 'center', gap: 5 }}>
                 📷 Edit banner
                 <input ref={bannerRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleBannerUpload} />
@@ -760,14 +808,8 @@ export default function Home() {
               <div style={{ margin: '10px 0 16px' }}>
                 {editingBio ? (
                   <div>
-                    <textarea
-                      defaultValue={profile.bio || ''}
-                      onChange={e => { bioRef.current = e.target.value }}
-                      placeholder="say something..."
-                      rows={2}
-                      dir="ltr"
-                      style={{ width: '100%', border: `1px solid ${S.border2}`, borderRadius: 10, padding: '9px 12px', fontSize: 14, background: S.card2, color: S.text, lineHeight: 1.55, resize: 'none', fontFamily: 'inherit', outline: 'none', direction: 'ltr', textAlign: 'left' } as any}
-                    />
+                    <textarea defaultValue={profile.bio || ''} onChange={e => { bioRef.current = e.target.value }} placeholder="say something..." rows={2} dir="ltr"
+                      style={{ width: '100%', border: `1px solid ${S.border2}`, borderRadius: 10, padding: '9px 12px', fontSize: 14, background: S.card2, color: S.text, lineHeight: 1.55, resize: 'none', fontFamily: 'inherit', outline: 'none', direction: 'ltr', textAlign: 'left' } as any} />
                     <div style={{ display: 'flex', gap: 7, marginTop: 8 }}>
                       <button onClick={handleSaveBio} style={{ padding: '6px 16px', borderRadius: 9, fontSize: 12, fontWeight: 600, background: S.blue, color: '#fff', border: 'none', cursor: 'pointer' }}>Save</button>
                       <button onClick={() => setEditingBio(false)} style={{ padding: '6px 16px', borderRadius: 9, fontSize: 12, border: `1px solid ${S.border2}`, background: 'transparent', color: S.text2, cursor: 'pointer' }}>Cancel</button>
@@ -826,20 +868,11 @@ export default function Home() {
           {posts.filter(p => p.user_id === profile.id).length === 0
             ? <p style={{ fontSize: 14, color: S.text3, textAlign: 'center', padding: '30px 0' }}>No posts yet.</p>
             : posts.filter(p => p.user_id === profile.id).map(p => (
-              <PostCard
-                key={p.id}
-                post={p}
-                profile={profile}
-                profiles={profiles}
-                myVote={myVotes[p.id]}
-                comments={comments[p.id] || []}
-                commentCount={commentCounts[p.id] || 0}
-                isCommentsOpen={openComments[p.id] || false}
-                onVote={handleVote}
-                onOpenProfile={setModalProfile}
-                onToggleComments={handleToggleComments}
-                onComment={handleComment}
-              />
+              <PostCard key={p.id} post={p} profile={profile} profiles={profiles} myVote={myVotes[p.id]}
+                comments={comments[p.id] || []} commentCount={commentCounts[p.id] || 0}
+                isCommentsOpen={openComments[p.id] || false} tags={postTags[p.id] || []}
+                onVote={handleVote} onOpenProfile={setModalProfile}
+                onToggleComments={handleToggleComments} onComment={handleComment} />
             ))
           }
         </>}

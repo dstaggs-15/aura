@@ -52,3 +52,10 @@ export type LedgerEntry = {
   balance_after: number
   created_at: string
 }
+
+export type PostTag = {
+  id: number
+  post_id: number
+  tagged_user_id: string
+  created_at: string
+}
