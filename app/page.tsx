@@ -168,7 +168,7 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
 })
 PostCard.displayName = 'PostCard'
 
-const TagPicker = ({ profiles, selected, onToggle, onClose }: { profiles: any[], selected: string[], onToggle: (id: string) => void, onClose: () => void }) => (
+const TagPicker = ({ profiles, selected, onToggle }: { profiles: any[], selected: string[], onToggle: (id: string) => void }) => (
   <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 100, background: S.card, border: `1px solid ${S.border2}`, borderRadius: 12, maxHeight: 200, overflowY: 'auto', marginTop: 4 }}>
     {profiles.map(p => (
       <div key={p.id} onClick={() => onToggle(p.id)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', cursor: 'pointer', background: selected.includes(p.id) ? S.blueDim : 'transparent', borderBottom: `1px solid ${S.border}` }}>
@@ -271,8 +271,16 @@ export default function Home() {
     toastTimer.current = setTimeout(() => setToast(null), 2400)
   }
 
-  const addLedgerEntry = async (userId: string, amount: number, type: string, description: string, balanceAfter: number) => {
-    await supabase.from('aura_ledger').insert({ user_id: userId, amount, type, description, balance_after: balanceAfter })
+  const updateAura = async (userId: string, newAura: number, type: string, description: string) => {
+    // Always fetch fresh aura from DB before writing ledger
+    const { data: fresh } = await supabase.from('profiles').select('aura, aura_all_time').eq('id', userId).single()
+    const currentAura = fresh ? fresh.aura : newAura
+    const diff = Math.round((newAura - currentAura) * 10) / 10
+    const finalAura = Math.round((currentAura + diff) * 10) / 10
+    const newAllTime = fresh ? Math.max(fresh.aura_all_time || 0, finalAura) : finalAura
+    await supabase.from('profiles').update({ aura: finalAura, aura_all_time: newAllTime }).eq('id', userId)
+    await supabase.from('aura_ledger').insert({ user_id: userId, amount: diff, type, description, balance_after: finalAura })
+    return finalAura
   }
 
   const handleVote = async (postId: number, val: number) => {
@@ -282,19 +290,25 @@ export default function Home() {
     const cost = val > 0 ? (VOTE_COST[String(val)] ?? 0) : 0
     const post = posts.find(p => p.id === postId)
     if (!post) return
+
     if (prev === 0) {
       await supabase.from('votes').insert({ voter_id: profile.id, post_id: postId, value: val })
     } else {
       await supabase.from('votes').update({ value: val }).eq('voter_id', profile.id).eq('post_id', postId)
     }
+
     const newPostAura = post.aura - prev + val
     await supabase.from('posts').update({ aura: newPostAura }).eq('id', postId)
+
+    // Update voter aura
     let newMyAura = profile.aura
     if (cost > 0) {
-      newMyAura = Math.round((profile.aura - cost) * 10) / 10
-      await supabase.from('profiles').update({ aura: newMyAura }).eq('id', profile.id)
-      await addLedgerEntry(profile.id, -cost, 'vote_cost', `Sent +${val} vote`, newMyAura)
+      newMyAura = await updateAura(profile.id, profile.aura - cost, 'vote_cost', `Sent +${val} vote`)
+      setProfile(p => p ? { ...p, aura: newMyAura } : p)
+      setProfiles(ps => ps.map(p => p.id === profile.id ? { ...p, aura: newMyAura } : p))
     }
+
+    // Update post owner aura
     const owner = profiles.find(p => p.id === post.user_id)
     if (owner && owner.id !== profile.id) {
       let gain = val - prev
@@ -305,36 +319,27 @@ export default function Home() {
         setTaxBucket(newBucket)
         gain *= 0.75
       }
-      const newOwnerAura = Math.round((owner.aura + gain) * 10) / 10
-      await supabase.from('profiles').update({ aura: newOwnerAura }).eq('id', owner.id)
-      await addLedgerEntry(owner.id, gain, 'post_vote', `${val > 0 ? '+' : ''}${val} vote on your post`, newOwnerAura)
+      const newOwnerAura = await updateAura(owner.id, owner.aura + gain, 'post_vote', `${val > 0 ? '+' : ''}${val} vote on your post`)
+      setProfiles(ps => ps.map(p => p.id === owner.id ? { ...p, aura: newOwnerAura } : p))
 
-      // Give tagged users 50% of owner's gain
+      // Tagged users get 50% of owner gain — skip only if tagged user IS the owner
       const tagged = postTags[postId] || []
       for (const taggedId of tagged) {
-        if (taggedId === owner.id || taggedId === profile.id) continue
+        if (taggedId === owner.id) continue  // owner can't double dip
         const taggedUser = profiles.find(p => p.id === taggedId)
         if (!taggedUser) continue
         const taggedGain = Math.round((gain * 0.5) * 10) / 10
         if (taggedGain === 0) continue
-        const newTaggedAura = Math.round((taggedUser.aura + taggedGain) * 10) / 10
-        await supabase.from('profiles').update({ aura: newTaggedAura }).eq('id', taggedId)
-        await addLedgerEntry(taggedId, taggedGain, 'tag_share', `Tagged in a post that got voted`, newTaggedAura)
+        const newTaggedAura = await updateAura(taggedId, taggedUser.aura + taggedGain, 'tag_share', `Tagged in a post that got voted`)
         setProfiles(ps => ps.map(p => p.id === taggedId ? { ...p, aura: newTaggedAura } : p))
+        if (profile.id === taggedId) {
+          setProfile(p => p ? { ...p, aura: newTaggedAura } : p)
+        }
       }
     }
+
     setMyVotes(v => ({ ...v, [postId]: val }))
     setPosts(ps => ps.map(p => p.id === postId ? { ...p, aura: newPostAura } : p))
-    if (cost > 0) setProfile(p => p ? { ...p, aura: newMyAura } : p)
-    setProfiles(ps => ps.map(p => {
-      if (p.id === profile.id && cost > 0) return { ...p, aura: newMyAura }
-      if (p.id === post.user_id) {
-        let gain = val - prev
-        if (p.aura < 0 && gain > 0) gain *= 0.75
-        return { ...p, aura: Math.round((p.aura + gain) * 10) / 10 }
-      }
-      return p
-    }))
     notify(val > 0 ? `+${val} aura sent` : `${val} aura sent`, val > 0 ? 'pos' : 'neg')
   }
 
@@ -350,9 +355,7 @@ export default function Home() {
     const gain = val - prev
     const target = profiles.find(p => p.id === targetId)
     if (target) {
-      const newAura = Math.round((target.aura + gain) * 10) / 10
-      await supabase.from('profiles').update({ aura: newAura }).eq('id', targetId)
-      await addLedgerEntry(targetId, gain, 'profile_vote', `Profile vote`, newAura)
+      const newAura = await updateAura(targetId, target.aura + gain, 'profile_vote', `Profile vote`)
       setProfiles(ps => ps.map(p => p.id === targetId ? { ...p, aura: newAura } : p))
       if (modalProfile?.id === targetId) setModalProfile(mp => mp ? { ...mp, aura: newAura } : mp)
     }
@@ -366,9 +369,8 @@ export default function Home() {
     if (profile.last_checkin === today) { notify('Already checked in today'); return }
     const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
     const newStreak = profile.last_checkin === yesterday ? profile.streak + 1 : 1
-    const newAura = profile.aura + 5
-    await supabase.from('profiles').update({ aura: newAura, streak: newStreak, last_checkin: today }).eq('id', profile.id)
-    await addLedgerEntry(profile.id, 5, 'checkin', `Day ${newStreak} check-in`, newAura)
+    const newAura = await updateAura(profile.id, profile.aura + 5, 'checkin', `Day ${newStreak} check-in`)
+    await supabase.from('profiles').update({ streak: newStreak, last_checkin: today }).eq('id', profile.id)
     setProfile(p => p ? { ...p, aura: newAura, streak: newStreak, last_checkin: today } : p)
     setProfiles(ps => ps.map(p => p.id === profile.id ? { ...p, aura: newAura, streak: newStreak, last_checkin: today } : p))
     notify(`🔥 +5 aura — ${newStreak} day streak!`, 'pos')
@@ -527,12 +529,13 @@ export default function Home() {
               <div style={{ display: 'flex', gap: 24, margin: '14px 0' }}>
                 {[
                   { label: 'Aura', val: fmtAura(modalProfile.aura), color: modalProfile.aura >= 0 ? S.blue : S.red },
+                  { label: 'All-time', val: fmtAura(modalProfile.aura_all_time || 0), color: S.fire },
                   { label: 'Streak', val: `🔥${modalProfile.streak}`, color: S.text },
                   { label: 'Posts', val: posts.filter(p => p.user_id === modalProfile.id).length, color: S.text },
                 ].map(s => (
                   <div key={s.label}>
-                    <div style={{ fontFamily: 'monospace', fontSize: 20, fontWeight: 700, color: s.color }}>{s.val}</div>
-                    <div style={{ fontSize: 11, color: S.text3, marginTop: 2 }}>{s.label}</div>
+                    <div style={{ fontFamily: 'monospace', fontSize: 18, fontWeight: 700, color: s.color }}>{s.val}</div>
+                    <div style={{ fontSize: 10, color: S.text3, marginTop: 2 }}>{s.label}</div>
                   </div>
                 ))}
               </div>
@@ -649,12 +652,8 @@ export default function Home() {
                   </div>
                 </div>
                 {showTagPicker && (
-                  <TagPicker
-                    profiles={otherProfiles}
-                    selected={selectedTags}
-                    onToggle={id => setSelectedTags(t => t.includes(id) ? t.filter(x => x !== id) : [...t, id])}
-                    onClose={() => setShowTagPicker(false)}
-                  />
+                  <TagPicker profiles={otherProfiles} selected={selectedTags}
+                    onToggle={id => setSelectedTags(t => t.includes(id) ? t.filter(x => x !== id) : [...t, id])} />
                 )}
               </div>
             </Card>
@@ -703,7 +702,7 @@ export default function Home() {
                     {u.id === profile.id && <span style={{ fontSize: 10, color: S.blue, background: S.blueDim, padding: '1px 6px', borderRadius: 4 }}>you</span>}
                     {cc > 0 && <span>{'🤡'.repeat(cc)}</span>}
                   </div>
-                  <div style={{ fontSize: 11, color: S.text3, marginTop: 2 }}>🔥 {u.streak} day streak</div>
+                  <div style={{ fontSize: 11, color: S.text3, marginTop: 2 }}>🔥 {u.streak} day streak · all-time {fmtAura(u.aura_all_time || 0)}</div>
                 </div>
                 <div style={{ fontFamily: 'monospace', fontSize: 15, fontWeight: 700, color: u.aura >= 0 ? S.blue : S.red }}>{fmtAura(u.aura)}</div>
               </Card>
@@ -779,6 +778,7 @@ export default function Home() {
             { title: '🚫 Glazing', body: "Max 3 big votes (+50 or -50) to the same person per 24 hours. Go over that and you get hit with -50. Don't glaze." },
             { title: '💬 Comments', body: 'Tap the comment button on any post to see and leave comments.' },
             { title: '📒 Ledger', body: 'Go to your Profile and tap Ledger to see every aura transaction — what you gained, lost, and when.' },
+            { title: '⭐ All-time aura', body: 'Your highest aura ever. Shows on your profile and leaderboard. Even if you lose aura, your all-time record stays.' },
           ].map(item => (
             <Card key={item.title} style={{ padding: 18, marginBottom: 10 }}>
               <div style={{ fontWeight: 600, fontSize: 15, color: S.text, marginBottom: 8 }}>{item.title}</div>
@@ -822,14 +822,15 @@ export default function Home() {
                   </div>
                 )}
               </div>
-              <div style={{ display: 'flex', gap: 28, marginBottom: 16 }}>
+              <div style={{ display: 'flex', gap: 20, marginBottom: 16, flexWrap: 'wrap' }}>
                 {[
                   { label: 'Aura', val: fmtAura(profile.aura), color: profile.aura >= 0 ? S.blue : S.red },
+                  { label: 'All-time', val: fmtAura(profile.aura_all_time || 0), color: S.fire },
                   { label: 'Streak', val: `🔥${profile.streak}`, color: S.text },
                   { label: 'Posts', val: posts.filter(p => p.user_id === profile.id).length, color: S.text },
                 ].map(s => (
                   <div key={s.label}>
-                    <div style={{ fontFamily: 'monospace', fontSize: 22, fontWeight: 700, color: s.color }}>{s.val}</div>
+                    <div style={{ fontFamily: 'monospace', fontSize: 20, fontWeight: 700, color: s.color }}>{s.val}</div>
                     <div style={{ fontSize: 11, color: S.text3, marginTop: 2 }}>{s.label}</div>
                   </div>
                 ))}

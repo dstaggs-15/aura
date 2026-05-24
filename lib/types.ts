@@ -5,6 +5,7 @@ export type Profile = {
   avatar_url: string | null
   banner_url: string | null
   aura: number
+  aura_all_time: number
   streak: number
   last_checkin: string | null
   created_at: string
