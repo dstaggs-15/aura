@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { requireUser, supabaseAdmin } from '@/lib/server'
+import { requireUser, getSupabaseAdmin } from '@/lib/server'
 
 export async function POST(request: Request) {
   try {
@@ -12,7 +12,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid subscription.' }, { status: 400 })
     }
 
-    const { error } = await supabaseAdmin.from('push_subscriptions').upsert({
+    const { error } = await getSupabaseAdmin().from('push_subscriptions').upsert({
       user_id: user.id,
       endpoint,
       p256dh,
@@ -32,7 +32,7 @@ export async function DELETE(request: Request) {
     const user = await requireUser(request)
     const { endpoint } = await request.json()
     if (endpoint) {
-      await supabaseAdmin.from('push_subscriptions').delete().eq('user_id', user.id).eq('endpoint', endpoint)
+      await getSupabaseAdmin().from('push_subscriptions').delete().eq('user_id', user.id).eq('endpoint', endpoint)
     }
     return NextResponse.json({ ok: true })
   } catch {
