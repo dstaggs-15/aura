@@ -39,7 +39,7 @@ language plpgsql
 stable
 security definer
 set search_path = public
-as $
+as $$
 declare
   v_uid uuid := auth.uid();
 begin
