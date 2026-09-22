@@ -26,10 +26,10 @@ language sql
 stable
 security definer
 set search_path = public
-as $
+as $$
   select auth.uid() is not null
     and exists(select 1 from public.private_members where user_id = auth.uid());
-$;
+$$;
 revoke all on function public.is_aura_member() from public, anon;
 grant execute on function public.is_aura_member() to authenticated;
 
@@ -41,19 +41,20 @@ security definer
 set search_path = public
 as $
 declare
-  v_uid uuid := public._require_aura_member();
+  v_uid uuid := auth.uid();
 begin
   if v_uid is null or not exists(select 1 from public.private_members where user_id=v_uid) then
     raise exception 'Aura membership required';
   end if;
   return v_uid;
 end;
-$;
+$$;
 revoke all on function public._require_aura_member() from public, anon, authenticated;
 
 create policy "private member self read"
 on public.private_members for select to authenticated
 using (user_id = auth.uid());
+grant select on public.private_members to authenticated;
 
 -- Friend relationships.
 create table if not exists public.friendships (
@@ -216,7 +217,7 @@ returns trigger
 language plpgsql
 security definer
 set search_path = public
-as $
+as $$
 declare
   v_username text;
 begin
@@ -226,7 +227,7 @@ begin
   on conflict (id) do nothing;
   return new;
 end;
-$;
+$$;
 
 drop trigger if exists on_auth_user_created_aura on auth.users;
 create trigger on_auth_user_created_aura
@@ -243,7 +244,7 @@ returns void
 language plpgsql
 security definer
 set search_path = public
-as $
+as $$
 declare
   v_uid uuid := public._require_aura_member();
 begin
@@ -258,7 +259,7 @@ begin
     raise exception 'invalid field';
   end if;
 end;
-$;
+$$;
 grant execute on function public.update_my_profile(text,text,text,text) to authenticated;
 
 create or replace function public.create_post(
@@ -270,7 +271,7 @@ returns bigint
 language plpgsql
 security definer
 set search_path = public
-as $
+as $$
 declare
   v_uid uuid := public._require_aura_member();
   v_post_id bigint;
@@ -291,7 +292,7 @@ begin
 
   return v_post_id;
 end;
-$;
+$$;
 grant execute on function public.create_post(text,text,uuid[]) to authenticated;
 
 create or replace function public.create_comment(p_post_id bigint, p_text text)
@@ -299,7 +300,7 @@ returns bigint
 language plpgsql
 security definer
 set search_path = public
-as $
+as $$
 declare
   v_uid uuid := public._require_aura_member();
   v_comment_id bigint;
@@ -315,7 +316,7 @@ begin
 
   return v_comment_id;
 end;
-$;
+$$;
 grant execute on function public.create_comment(bigint,text) to authenticated;
 
 -- Internal helpers. Never grant these directly to app users.
@@ -712,7 +713,7 @@ returns jsonb
 language plpgsql
 security definer
 set search_path = public
-as $
+as $$
 declare
   r record;
   v_anchor date;
@@ -748,7 +749,7 @@ begin
 
   return jsonb_build_object('status','ok','users_penalized',v_count,'aura_removed',v_total);
 end;
-$;
+$$;
 revoke all on function public.apply_daily_inactivity_penalties() from public, anon, authenticated;
 grant execute on function public.apply_daily_inactivity_penalties() to service_role;
 
