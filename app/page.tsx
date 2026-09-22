@@ -460,7 +460,8 @@ export default function Home() {
     const nowOpen = !openComments[postId]
     setOpenComments(o => ({ ...o, [postId]: nowOpen }))
     if (nowOpen && !comments[postId]) {
-      const { data } = await supabase.from('comments').select('*, profiles(*)').eq('post_id', postId).order('created_at', { ascending: true })
+      const { data, error } = await supabase.from('comments').select('*').eq('post_id', postId).order('created_at', { ascending: true })
+      if (error) { notify(`Could not load comments: ${error.message}`, 'neg'); return }
       if (data) {
         setComments(c => ({ ...c, [postId]: data }))
         const ids = data.map((x: any) => x.id)
