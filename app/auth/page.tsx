@@ -12,6 +12,17 @@ export default function AuthPage() {
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
 
+  const claimMembership = async (code: string, name: string) => {
+    const { data, error } = await supabase.rpc('claim_aura_membership', {
+      p_invite_code: code,
+      p_username: name,
+    })
+    if (error) throw error
+    if (!data?.ok) throw new Error('Could not activate Aura membership.')
+    localStorage.removeItem('aura_pending_invite')
+    localStorage.removeItem('aura_pending_username')
+  }
+
   const handleSubmit = async () => {
     setLoading(true)
     setError('')
@@ -23,29 +34,39 @@ export default function AuthPage() {
         if (error) throw error
         if (!data.user) throw new Error('Login failed.')
 
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('is_member')
-          .eq('id', data.user.id)
-          .maybeSingle()
-
-        if (!profile?.is_member) {
-          await supabase.auth.signOut()
-          throw new Error('This account does not have access to Aura.')
+        const { data: member } = await supabase.rpc('is_aura_member')
+        if (!member) {
+          const pendingInvite = localStorage.getItem('aura_pending_invite') || inviteCode
+          const pendingUsername = localStorage.getItem('aura_pending_username') || username
+          if (!pendingInvite || !pendingUsername) {
+            await supabase.auth.signOut()
+            throw new Error('This account is not an Aura member.')
+          }
+          await claimMembership(pendingInvite, pendingUsername)
         }
+
         window.location.href = '/'
       } else {
-        const response = await fetch('/api/signup', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password, username, inviteCode }),
+        if (!username.trim() || !inviteCode.trim()) throw new Error('Username and invite code are required.')
+
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { data: { username: username.trim() } },
         })
-        const result = await response.json()
-        if (!response.ok) throw new Error(result.error || 'Could not create account.')
+        if (error) throw error
+
+        if (data.session) {
+          await claimMembership(inviteCode.trim(), username.trim())
+          window.location.href = '/'
+          return
+        }
+
+        localStorage.setItem('aura_pending_invite', inviteCode.trim())
+        localStorage.setItem('aura_pending_username', username.trim())
         setIsLogin(true)
         setPassword('')
-        setInviteCode('')
-        setMessage('Account created. You can log in now.')
+        setMessage('Account created. If Supabase asks you to confirm your email, do that, then log in here and Aura will activate your invite automatically.')
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.')
@@ -80,7 +101,7 @@ export default function AuthPage() {
         {!isLogin && (
           <>
             <Field label="Username" value={username} onChange={setUsername} placeholder="jake_energy" />
-            <Field label="Invite code" value={inviteCode} onChange={setInviteCode} placeholder="your private invite code" />
+            <Field label="Invite code" value={inviteCode} onChange={setInviteCode} placeholder="private invite code" />
           </>
         )}
         <Field label="Email" type="email" value={email} onChange={setEmail} placeholder="you@email.com" />
@@ -117,7 +138,6 @@ function Field({ label, value, onChange, placeholder, type = 'text' }: {
     <div style={{ marginBottom: 12 }}>
       <div style={{ fontSize: 12, fontWeight: 500, color: '#aaa', marginBottom: 6 }}>{label}</div>
       <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
-        onKeyDown={e => { if (e.key === 'Enter') (e.currentTarget.form as any)?.requestSubmit?.() }}
         style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid #333', fontSize: 14, outline: 'none', background: '#1e1e1e', color: '#f0f0f0' }} />
     </div>
   )
