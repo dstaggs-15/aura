@@ -116,6 +116,7 @@ create policy "weekly rounds authenticated read"
 on public.weekly_rounds for select to authenticated
 using (true);
 
+grant select on public.profiles, public.posts, public.comments, public.post_tags to authenticated;
 grant select on public.aura_ledger, public.votes, public.profile_votes, public.tax_bucket to authenticated;
 grant select on public.friendships, public.notifications, public.weekly_rounds to authenticated;
 
@@ -658,6 +659,51 @@ end;
 $$;
 grant execute on function public.sync_inactivity_penalty() to authenticated;
 
+create or replace function public.apply_daily_inactivity_penalties()
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $
+declare
+  r record;
+  v_anchor date;
+  v_days integer;
+  v_penalty integer;
+  v_count integer := 0;
+  v_total double precision := 0;
+begin
+  for r in
+    select id, last_checkin, last_inactivity_penalty
+    from public.profiles
+    where last_checkin is not null
+    order by id
+  loop
+    v_anchor := greatest(r.last_checkin, coalesce(r.last_inactivity_penalty, r.last_checkin));
+    v_days := greatest((current_date - v_anchor) - 1, 0);
+    if v_days > 0 then
+      v_penalty := least(v_days * 2, 20);
+      perform public._apply_aura_delta(
+        r.id,
+        -v_penalty,
+        'inactivity',
+        'Missed ' || v_days || ' days — streak reset'
+      );
+      update public.profiles
+      set streak = 0,
+          last_inactivity_penalty = current_date - 1
+      where id = r.id;
+      v_count := v_count + 1;
+      v_total := v_total + v_penalty;
+    end if;
+  end loop;
+
+  return jsonb_build_object('status','ok','users_penalized',v_count,'aura_removed',v_total);
+end;
+$;
+revoke all on function public.apply_daily_inactivity_penalties() from public, anon, authenticated;
+grant execute on function public.apply_daily_inactivity_penalties() to service_role;
+
 -- Friendship RPCs.
 create or replace function public.send_friend_request(p_target_id uuid)
 returns jsonb
@@ -781,6 +827,7 @@ begin
 end;
 $$;
 revoke all on function public.settle_weekly_pool() from public, anon, authenticated;
+grant execute on function public.settle_weekly_pool() to service_role;
 
 -- Repair the existing ledger without rewriting balances: add a reconciliation row only when needed.
 with latest as (
