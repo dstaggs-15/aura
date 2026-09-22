@@ -125,10 +125,10 @@ const renderText = (text: string, color = '#ccc') => {
   )
 }
 
-const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount, isCommentsOpen, tags, onVote, onOpenProfile, onToggleComments, onComment }: {
+const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount, isCommentsOpen, tags, commentVotes, onVote, onCommentVote, onOpenProfile, onToggleComments, onComment }: {
   post: any; profile: any; profiles: any[]; myVote: number | undefined;
-  comments: any[]; commentCount: number; isCommentsOpen: boolean; tags: string[];
-  onVote: (postId: number, val: number) => void;
+  comments: any[]; commentCount: number; isCommentsOpen: boolean; tags: string[]; commentVotes: Record<number, number>;
+  onVote: (postId: number, val: number) => void; onCommentVote: (commentId: number, val: number) => void;
   onOpenProfile: (p: any) => void;
   onToggleComments: (postId: number) => void;
   onComment: (postId: number, text: string) => void;
@@ -206,6 +206,10 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
                   <div style={{ flex: 1, background: S.card2, borderRadius: 10, padding: '8px 12px' }}>
                     <div style={{ fontWeight: 600, fontSize: 12, color: S.text, marginBottom: 3 }}>{cu.username}</div>
                     {renderText(c.text, '#ccc')}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 7 }}>
+                      <span style={{ fontFamily: 'monospace', fontSize: 11, fontWeight: 700, color: (c.aura || 0) >= 0 ? S.blue : S.red }}>{fmtAura(c.aura || 0)}</span>
+                      {cu.id !== profile.id && [-1, 1].map(v => <button key={v} onClick={() => onCommentVote(c.id, v)} style={{ padding: '2px 7px', borderRadius: 6, fontSize: 10, fontWeight: 700, border: `1px solid ${commentVotes[c.id] === v ? 'transparent' : S.border2}`, background: commentVotes[c.id] === v ? (v > 0 ? S.blue : S.red) : 'transparent', color: commentVotes[c.id] === v ? '#fff' : (v > 0 ? S.blue : S.red), cursor: 'pointer' }}>{v > 0 ? '+1' : '-1'}</button>)}
+                    </div>
                   </div>
                 </div>
               )
@@ -252,6 +256,7 @@ export default function Home() {
   const [editingBio, setEditingBio] = useState(false)
   const [profileVotes, setProfileVotes] = useState<Record<string, number>>({})
   const [comments, setComments] = useState<Record<number, Comment[]>>({})
+  const [commentVotes, setCommentVotes] = useState<Record<number, number>>({})
   const [openComments, setOpenComments] = useState<Record<number, boolean>>({})
   const [ledger, setLedger] = useState<LedgerEntry[]>([])
   const [showLedger, setShowLedger] = useState(false)
@@ -442,12 +447,28 @@ export default function Home() {
     }
   }
 
+  const handleCommentVote = async (commentId: number, val: number) => {
+    if (!profile) return
+    const { error } = await supabase.rpc('cast_comment_vote', { p_comment_id: commentId, p_value: val })
+    if (error) { notify(error.message, 'neg'); return }
+    setCommentVotes(v => ({ ...v, [commentId]: val }))
+    setComments(groups => Object.fromEntries(Object.entries(groups).map(([postId, rows]) => [postId, rows.map((row: any) => row.id === commentId ? { ...row, aura: (row.aura || 0) + val - (commentVotes[commentId] || 0) } : row)])))
+    await loadAll(profile.id)
+  }
+
   const handleToggleComments = async (postId: number) => {
     const nowOpen = !openComments[postId]
     setOpenComments(o => ({ ...o, [postId]: nowOpen }))
     if (nowOpen && !comments[postId]) {
       const { data } = await supabase.from('comments').select('*, profiles(*)').eq('post_id', postId).order('created_at', { ascending: true })
-      if (data) setComments(c => ({ ...c, [postId]: data }))
+      if (data) {
+        setComments(c => ({ ...c, [postId]: data }))
+        const ids = data.map((x: any) => x.id)
+        if (ids.length) {
+          const { data: votes } = await supabase.from('comment_votes').select('comment_id,value').eq('voter_id', profile!.id).in('comment_id', ids)
+          if (votes) setCommentVotes(v => ({ ...v, ...Object.fromEntries(votes.map((x: any) => [x.comment_id, x.value])) }))
+        }
+      }
     }
   }
 
@@ -715,8 +736,8 @@ export default function Home() {
           {sorted.map(p => (
             <PostCard key={p.id} post={p} profile={profile} profiles={profiles} myVote={myVotes[p.id]}
               comments={comments[p.id] || []} commentCount={commentCounts[p.id] || 0}
-              isCommentsOpen={openComments[p.id] || false} tags={postTags[p.id] || []}
-              onVote={handleVote} onOpenProfile={setModalProfile}
+              isCommentsOpen={openComments[p.id] || false} tags={postTags[p.id] || []} commentVotes={commentVotes}
+              onVote={handleVote} onCommentVote={handleCommentVote} onOpenProfile={setModalProfile}
               onToggleComments={handleToggleComments} onComment={handleComment} />
           ))}
         </>}
