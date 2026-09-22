@@ -336,8 +336,7 @@ export default function Home() {
     setPushBusy(true)
     try {
       if (!('serviceWorker' in navigator) || !('PushManager' in window)) throw new Error('Push is not supported in this browser.')
-      const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
-      if (!publicKey) throw new Error('Push is not configured yet.')
+      const publicKey = 'BEbse352LwkSuMmgi3olJXrLjjVlbiCVU7JdSiBcJJBwRhaVGWFOf1IyscziCFBky_rQudsQlUrCzHs-PLy1cJM'
       const permission = await Notification.requestPermission()
       if (permission !== 'granted') throw new Error('Notifications were not allowed.')
       const registration = await navigator.serviceWorker.register('/sw.js')
