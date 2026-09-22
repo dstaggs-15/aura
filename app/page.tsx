@@ -4,7 +4,6 @@ import { supabase } from '@/lib/supabase'
 import { Profile, Post, Comment, LedgerEntry } from '@/lib/types'
 
 const VOTE_OPTS = [-50, -10, -5, -1, 1, 5, 10, 50]
-const VOTE_COST: Record<string, number> = { "50": 5, "10": 1, "5": .5, "1": .5, "-1": 0, "-5": 0, "-10": 0, "-50": 0 }
 const fmtAura = (n: number) => (n >= 0 ? "+" : "") + n.toLocaleString()
 const clownCount = (a: number) => a < -499 ? 3 : a < -99 ? 2 : a < 0 ? 1 : 0
 const timeAgo = (ts: string) => {
@@ -855,12 +854,12 @@ export default function Home() {
             {[
               ['Total aura in circulation', fmtAura(profiles.reduce((s, u) => s + u.aura, 0))],
               ['Users in clown mode', `${profiles.filter(u => u.aura < 0).length} 🤡`],
-              ['Tax rate on negative users', '25%'],
+              ['Clown tax', '25% / 35% / 45% by tier'],
               ['Daily check-in reward', '+5 🔥'],
               ['Missed day penalty', '−2 per day missed'],
-              ['Cost to send +50 vote', '5 aura'],
+              ['Cost to send +50 vote', '20 aura'],
               ['Negative votes', 'Free'],
-              ['Tagged in a post', '50% of poster\'s gain'],
+              ['Tagged in a post', '50% total bonus split across tags'],
             ].map(([label, val]) => (
               <div key={label as string} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: `1px solid ${S.border}` }}>
                 <span style={{ fontSize: 13, color: S.text2 }}>{label}</span>
@@ -874,10 +873,10 @@ export default function Home() {
           {[
             { title: '🔥 What is aura?', body: 'Your score on this site. Post something, people vote on it, your aura goes up or down. Simple.' },
             { title: '🗳️ Voting', body: 'Vote +1 to +50 or negative on any post. Positive votes cost you a small amount of your own aura. Negative votes are free.' },
-            { title: '📍 Tagging', body: 'When making a post, tap "Tag people" to tag someone in it. If your post gets votes, tagged people earn 50% of what you earn. Tag people who are actually in the post.' },
-            { title: '📊 Profile votes', body: "You can vote on someone's whole profile, not just their posts. Tap their name or avatar anywhere to pull up their profile and rate their vibe." },
-            { title: '🤡 Negative aura', body: 'Drop below 0 and clown emojis start showing on your profile. You also only keep 75% of aura you earn while negative — the rest goes into the prize pool.' },
-            { title: '🏆 Prize pool', body: 'Every Sunday at midnight, whoever has the highest-aura post that week wins the entire pool. The pool fills from the 25% tax on negative users.' },
+            { title: '📍 Tagging', body: 'When making a post, tap "Tag people" to tag someone in it. Tagged people share a bonus pool worth 50% of the vote change total, split evenly across everyone tagged.' },
+            { title: '📊 Profile votes', body: "You can vote on someone's whole profile from −10 to +10. Positive profile votes cost aura just like post votes, so profile voting can't mint free points." },
+            { title: '🤡 Clown mode', body: 'Below 0 you enter Clown Mode. Clown tax rises by tier: 25% below 0, 35% below −100, and 45% below −500. The tax goes into the weekly prize pool. Your profile also shows how much aura you need to escape.' },
+            { title: '🏆 Prize pool', body: 'Every Sunday, the highest-aura post from that week wins the pool. The pool is funded by Clown Mode taxes and is settled automatically.' },
             { title: '🔥 Streaks', body: 'Hit Check In every day for +5 aura. Miss a day and your streak resets and you lose 2 aura per missed day (max 20). Log in daily or fall behind.' },
             { title: '🚫 Glazing', body: "Max 3 big votes (+50 or -50) to the same person per 24 hours. Go over that and you get hit with -50. Don't glaze." },
             { title: '💬 Comments', body: 'Tap the comment button on any post to see and leave comments.' },
@@ -926,6 +925,18 @@ export default function Home() {
                   </div>
                 )}
               </div>
+              {profile.aura < 0 && (
+                <div style={{ margin:'0 0 16px', padding:14, borderRadius:12, background:S.redDim, border:`1px solid ${S.red}` }}>
+                  <div style={{ fontSize:11, textTransform:'uppercase', letterSpacing:1.2, color:S.red, fontWeight:700, marginBottom:6 }}>🤡 Clown Mode</div>
+                  <div style={{ fontSize:14, color:S.text, fontWeight:600 }}>{Math.abs(profile.aura).toFixed(1)} aura until freedom</div>
+                  <div style={{ fontSize:12, color:S.text2, marginTop:4 }}>
+                    {profile.aura < -500 ? 'Mega Clown · 45% recovery tax' : profile.aura < -100 ? 'Big Clown · 35% recovery tax' : 'Clown · 25% recovery tax'}
+                  </div>
+                  <div style={{ height:6, background:S.card2, borderRadius:99, overflow:'hidden', marginTop:10 }}>
+                    <div style={{ height:'100%', width:`${Math.max(4, Math.min(100, 100 - Math.abs(profile.aura) / 5))}%`, background:S.red }} />
+                  </div>
+                </div>
+              )}
               <div style={{ display: 'flex', gap: 20, marginBottom: 16, flexWrap: 'wrap' }}>
                 {[
                   { label: 'Aura', val: fmtAura(profile.aura), color: profile.aura >= 0 ? S.blue : S.red },
