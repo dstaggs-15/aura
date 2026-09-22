@@ -71,6 +71,15 @@ create table if not exists public.weekly_rounds (
   settled_at timestamptz,
   created_at timestamptz not null default now()
 );
+create unique index if not exists weekly_rounds_start_unique on public.weekly_rounds(starts_at);
+
+insert into public.aura_ledger(user_id, amount, type, description, balance_after)
+select p.id, 0, 'migration_reconcile', 'Ledger baseline after secure accounting migration', p.aura
+from public.profiles p
+where not exists (
+  select 1 from public.aura_ledger l
+  where l.user_id = p.id and l.type = 'migration_reconcile'
+);
 
 create or replace function public.is_aura_member()
 returns boolean
