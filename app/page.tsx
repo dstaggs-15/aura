@@ -122,7 +122,7 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
         {isOwn
           ? <span style={{ fontSize: 11, color: S.text3 }}>your post</span>
           : <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-              {VOTE_OPTS.map(v => {
+              {[-10, -5, -1, 1, 5, 10].map(v => {
                 const active = myVote === v
                 const neg = v < 0
                 return (
@@ -204,6 +204,9 @@ export default function Home() {
   const [openComments, setOpenComments] = useState<Record<number, boolean>>({})
   const [ledger, setLedger] = useState<LedgerEntry[]>([])
   const [showLedger, setShowLedger] = useState(false)
+  const [friendships, setFriendships] = useState<any[]>([])
+  const [pushEnabled, setPushEnabled] = useState(false)
+  const [pushSupported, setPushSupported] = useState(false)
   const toastTimer = useRef<any>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const postImageRef = useRef<HTMLInputElement>(null)
@@ -212,40 +215,51 @@ export default function Home() {
   const bioRef = useRef<string>('')
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
+    let channel: any
+    supabase.auth.getUser().then(async ({ data }) => {
       if (!data.user) { window.location.href = '/auth'; return }
-      loadAll(data.user.id)
+      await loadAll(data.user.id)
+      setPushSupported('serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window)
+      if ('serviceWorker' in navigator) {
+        const reg = await navigator.serviceWorker.register('/sw.js')
+        const sub = await reg.pushManager?.getSubscription()
+        setPushEnabled(Boolean(sub))
+      }
+
+      channel = supabase.channel('aura-live')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => loadAll(data.user!.id))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => loadAll(data.user!.id))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, () => loadAll(data.user!.id))
+        .subscribe()
     })
+    return () => { if (channel) supabase.removeChannel(channel) }
   }, [])
 
-  const applyLoginPenalty = async (uid: string, prof: Profile) => {
-    if (!prof.last_checkin) return
-    const daysSince = Math.floor((Date.now() - new Date(prof.last_checkin).getTime()) / 86400000)
-    if (daysSince <= 1) return
-    const penalty = Math.min(daysSince * 2, 20)
-    const newAura = Math.round((prof.aura - penalty) * 10) / 10
-    await supabase.from('profiles').update({ aura: newAura, streak: 0 }).eq('id', uid)
-    await supabase.from('aura_ledger').insert({ user_id: uid, amount: -penalty, type: 'inactivity', description: `Missed ${daysSince} days — streak reset`, balance_after: newAura })
-    return { newAura, penalty }
+  const applyLoginPenalty = async () => {
+    const { data, error } = await supabase.rpc('sync_inactivity_penalty')
+    if (error) return null
+    return data
   }
 
   const loadAll = async (uid: string) => {
-    const [{ data: profs }, { data: ps }, { data: bucket }, { data: vs }, { data: counts }, { data: tags }] = await Promise.all([
+    const [{ data: profs }, { data: ps }, { data: bucket }, { data: vs }, { data: counts }, { data: tags }, { data: friends }] = await Promise.all([
       supabase.from('profiles').select('*'),
       supabase.from('posts').select('*, profiles(*)').order('created_at', { ascending: false }),
       supabase.from('tax_bucket').select('*').single(),
       supabase.from('votes').select('*').eq('voter_id', uid),
       supabase.from('post_comment_counts').select('*'),
       supabase.from('post_tags').select('*'),
+      supabase.from('friendships').select('*').or(`requester_id.eq.${uid},addressee_id.eq.${uid}`),
     ])
     if (profs) {
       setProfiles(profs)
       const myProf = profs.find((p: Profile) => p.id === uid)
       if (myProf) {
-        const result = await applyLoginPenalty(uid, myProf)
-        if (result) {
-          setProfile({ ...myProf, aura: result.newAura, streak: 0 })
-          setProfiles(profs.map((p: Profile) => p.id === uid ? { ...p, aura: result.newAura, streak: 0 } : p))
+        const result = await applyLoginPenalty()
+        if (result?.status === 'penalty') {
+          const updated = { ...myProf, aura: result.aura, streak: 0 }
+          setProfile(updated)
+          setProfiles(profs.map((p: Profile) => p.id === uid ? updated : p))
           notify(`📉 −${result.penalty} aura for missing days`, 'neg')
         } else {
           setProfile(myProf)
@@ -261,6 +275,7 @@ export default function Home() {
       tags.forEach((t: any) => { if (!m[t.post_id]) m[t.post_id] = []; m[t.post_id].push(t.tagged_user_id) })
       setPostTags(m)
     }
+    if (friends) setFriendships(friends)
     const { data: pvs } = await supabase.from('profile_votes').select('*').eq('voter_id', uid)
     if (pvs) { const m: Record<string, number> = {}; pvs.forEach((v: any) => m[v.target_id] = v.value); setProfileVotes(m) }
   }
@@ -271,109 +286,33 @@ export default function Home() {
     toastTimer.current = setTimeout(() => setToast(null), 2400)
   }
 
-  const updateAura = async (userId: string, newAura: number, type: string, description: string) => {
-    // Always fetch fresh aura from DB before writing ledger
-    const { data: fresh } = await supabase.from('profiles').select('aura, aura_all_time').eq('id', userId).single()
-    const currentAura = fresh ? fresh.aura : newAura
-    const diff = Math.round((newAura - currentAura) * 10) / 10
-    const finalAura = Math.round((currentAura + diff) * 10) / 10
-    const newAllTime = fresh ? Math.max(fresh.aura_all_time || 0, finalAura) : finalAura
-    await supabase.from('profiles').update({ aura: finalAura, aura_all_time: newAllTime }).eq('id', userId)
-    await supabase.from('aura_ledger').insert({ user_id: userId, amount: diff, type, description, balance_after: finalAura })
-    return finalAura
-  }
-
   const handleVote = async (postId: number, val: number) => {
     if (!profile) return
-    const prev = myVotes[postId] ?? 0
-    if (prev === val) return
-    const cost = val > 0 ? (VOTE_COST[String(val)] ?? 0) : 0
-    const post = posts.find(p => p.id === postId)
-    if (!post) return
-
-    if (prev === 0) {
-      await supabase.from('votes').insert({ voter_id: profile.id, post_id: postId, value: val })
+    const { data, error } = await supabase.rpc('cast_post_vote', { p_post_id: postId, p_value: val })
+    if (error) { notify(error.message, 'neg'); return }
+    if (data?.status === 'glazing_penalty') {
+      notify('🚫 Glazing penalty: −50 aura', 'neg')
     } else {
-      await supabase.from('votes').update({ value: val }).eq('voter_id', profile.id).eq('post_id', postId)
+      notify(val > 0 ? `+${val} aura sent` : `${val} aura sent`, val > 0 ? 'pos' : 'neg')
     }
-
-    const newPostAura = post.aura - prev + val
-    await supabase.from('posts').update({ aura: newPostAura }).eq('id', postId)
-
-    // Update voter aura
-    let newMyAura = profile.aura
-    if (cost > 0) {
-      newMyAura = await updateAura(profile.id, profile.aura - cost, 'vote_cost', `Sent +${val} vote`)
-      setProfile(p => p ? { ...p, aura: newMyAura } : p)
-      setProfiles(ps => ps.map(p => p.id === profile.id ? { ...p, aura: newMyAura } : p))
-    }
-
-    // Update post owner aura
-    const owner = profiles.find(p => p.id === post.user_id)
-    if (owner && owner.id !== profile.id) {
-      let gain = val - prev
-      if (owner.aura < 0 && gain > 0) {
-        const tax = gain * 0.25
-        const newBucket = Math.round((taxBucket + tax) * 10) / 10
-        await supabase.from('tax_bucket').update({ amount: newBucket }).eq('id', 1)
-        setTaxBucket(newBucket)
-        gain *= 0.75
-      }
-      const newOwnerAura = await updateAura(owner.id, owner.aura + gain, 'post_vote', `${val > 0 ? '+' : ''}${val} vote on your post`)
-      setProfiles(ps => ps.map(p => p.id === owner.id ? { ...p, aura: newOwnerAura } : p))
-
-      // Tagged users get 50% of owner gain — skip only if tagged user IS the owner
-      const tagged = postTags[postId] || []
-      for (const taggedId of tagged) {
-        if (taggedId === owner.id) continue  // owner can't double dip
-        const taggedUser = profiles.find(p => p.id === taggedId)
-        if (!taggedUser) continue
-        const taggedGain = Math.round((gain * 0.5) * 10) / 10
-        if (taggedGain === 0) continue
-        const newTaggedAura = await updateAura(taggedId, taggedUser.aura + taggedGain, 'tag_share', `Tagged in a post that got voted`)
-        setProfiles(ps => ps.map(p => p.id === taggedId ? { ...p, aura: newTaggedAura } : p))
-        if (profile.id === taggedId) {
-          setProfile(p => p ? { ...p, aura: newTaggedAura } : p)
-        }
-      }
-    }
-
-    setMyVotes(v => ({ ...v, [postId]: val }))
-    setPosts(ps => ps.map(p => p.id === postId ? { ...p, aura: newPostAura } : p))
-    notify(val > 0 ? `+${val} aura sent` : `${val} aura sent`, val > 0 ? 'pos' : 'neg')
+    await loadAll(profile.id)
   }
 
   const handleProfileVote = async (targetId: string, val: number) => {
     if (!profile || targetId === profile.id) return
-    const prev = profileVotes[targetId] ?? 0
-    if (prev === val) return
-    if (prev === 0) {
-      await supabase.from('profile_votes').insert({ voter_id: profile.id, target_id: targetId, value: val })
-    } else {
-      await supabase.from('profile_votes').update({ value: val }).eq('voter_id', profile.id).eq('target_id', targetId)
-    }
-    const gain = val - prev
-    const target = profiles.find(p => p.id === targetId)
-    if (target) {
-      const newAura = await updateAura(targetId, target.aura + gain, 'profile_vote', `Profile vote`)
-      setProfiles(ps => ps.map(p => p.id === targetId ? { ...p, aura: newAura } : p))
-      if (modalProfile?.id === targetId) setModalProfile(mp => mp ? { ...mp, aura: newAura } : mp)
-    }
-    setProfileVotes(v => ({ ...v, [targetId]: val }))
+    const { error } = await supabase.rpc('cast_profile_vote', { p_target_id: targetId, p_value: val })
+    if (error) { notify(error.message, 'neg'); return }
     notify(val > 0 ? `+${val} to their profile` : `${val} to their profile`, val > 0 ? 'pos' : 'neg')
+    await loadAll(profile.id)
   }
 
   const handleCheckIn = async () => {
     if (!profile) return
-    const today = new Date().toISOString().split('T')[0]
-    if (profile.last_checkin === today) { notify('Already checked in today'); return }
-    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
-    const newStreak = profile.last_checkin === yesterday ? profile.streak + 1 : 1
-    const newAura = await updateAura(profile.id, profile.aura + 5, 'checkin', `Day ${newStreak} check-in`)
-    await supabase.from('profiles').update({ streak: newStreak, last_checkin: today }).eq('id', profile.id)
-    setProfile(p => p ? { ...p, aura: newAura, streak: newStreak, last_checkin: today } : p)
-    setProfiles(ps => ps.map(p => p.id === profile.id ? { ...p, aura: newAura, streak: newStreak, last_checkin: today } : p))
-    notify(`🔥 +5 aura — ${newStreak} day streak!`, 'pos')
+    const { data, error } = await supabase.rpc('daily_checkin')
+    if (error) { notify(error.message, 'neg'); return }
+    if (data?.status === 'already') { notify('Already checked in today'); return }
+    notify(`🔥 +5 aura — ${data.streak} day streak!`, 'pos')
+    await loadAll(profile.id)
   }
 
   const handlePost = async () => {
@@ -401,6 +340,15 @@ export default function Home() {
       setSelectedTags([])
       setComposing(false)
       notify('Posted 🔥')
+      const { data: sessionData } = await supabase.auth.getSession()
+      const token = sessionData.session?.access_token
+      if (token) {
+        fetch('/api/push/post', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+          body: JSON.stringify({ postId: data.id }),
+        }).catch(() => {})
+      }
     }
     setPosting(false)
   }
@@ -465,13 +413,95 @@ export default function Home() {
     if (data) setLedger(data)
   }
 
+  const getFriendship = (targetId: string) => friendships.find(f =>
+    (f.requester_id === profile?.id && f.addressee_id === targetId) ||
+    (f.addressee_id === profile?.id && f.requester_id === targetId)
+  )
+
+  const sendFriendRequest = async (targetId: string) => {
+    if (!profile) return
+    const { data, error } = await supabase.rpc('send_friend_request', { p_target_id: targetId })
+    if (error) { notify(error.message, 'neg'); return }
+    notify(data?.status === 'accepted' ? 'Friends now ✓' : 'Friend request sent', 'pos')
+    await loadAll(profile.id)
+  }
+
+  const respondFriendRequest = async (id: number, accept: boolean) => {
+    if (!profile) return
+    const { error } = await supabase.rpc('respond_friend_request', { p_friendship_id: id, p_accept: accept })
+    if (error) { notify(error.message, 'neg'); return }
+    notify(accept ? 'Friend added ✓' : 'Request declined')
+    await loadAll(profile.id)
+  }
+
+  const removeFriend = async (id: number) => {
+    if (!profile) return
+    const { error } = await supabase.rpc('remove_friend', { p_friendship_id: id })
+    if (error) { notify(error.message, 'neg'); return }
+    notify('Friend removed')
+    await loadAll(profile.id)
+  }
+
+  const urlBase64ToUint8Array = (base64String: string) => {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4)
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
+    const rawData = window.atob(base64)
+    return Uint8Array.from([...rawData].map(char => char.charCodeAt(0)))
+  }
+
+  const enablePush = async () => {
+    if (!pushSupported || !profile) { notify('Push notifications are not supported in this browser', 'neg'); return }
+    const permission = await Notification.requestPermission()
+    if (permission !== 'granted') { notify('Notification permission was not granted', 'neg'); return }
+    const reg = await navigator.serviceWorker.register('/sw.js')
+    const key = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+    if (!key) { notify('Push is not configured yet', 'neg'); return }
+    let sub = await reg.pushManager.getSubscription()
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(key) })
+    const json = sub.toJSON()
+    const { data: sessionData } = await supabase.auth.getSession()
+    const token = sessionData.session?.access_token
+    const res = await fetch('/api/push/subscribe', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+      body: JSON.stringify(json),
+    })
+    if (!res.ok) { notify('Could not enable notifications', 'neg'); return }
+    setPushEnabled(true)
+    notify('Push notifications enabled', 'pos')
+  }
+
+  const disablePush = async () => {
+    const reg = await navigator.serviceWorker.getRegistration('/sw.js')
+    const sub = await reg?.pushManager.getSubscription()
+    if (sub) {
+      const { data: sessionData } = await supabase.auth.getSession()
+      const token = sessionData.session?.access_token
+      await fetch('/api/push/subscribe', {
+        method: 'DELETE',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+        body: JSON.stringify({ endpoint: sub.endpoint }),
+      })
+      await sub.unsubscribe()
+    }
+    setPushEnabled(false)
+    notify('Push notifications disabled')
+  }
+
   const handleLogout = async () => {
     await supabase.auth.signOut()
     window.location.href = '/auth'
   }
 
   const checkedInToday = profile?.last_checkin === new Date().toISOString().split('T')[0]
-  const topPost = [...posts].sort((a, b) => b.aura - a.aura)[0]
+  const weekStart = (() => {
+    const d = new Date()
+    d.setHours(0, 0, 0, 0)
+    d.setDate(d.getDate() - d.getDay())
+    return d
+  })()
+  const weeklyPosts = posts.filter(p => new Date(p.created_at) >= weekStart)
+  const topPost = [...weeklyPosts].sort((a, b) => b.aura - a.aura)[0]
   const topPostUser = topPost ? profiles.find(p => p.id === topPost.user_id) : null
   const sorted = [...posts].sort((a, b) => filter === 'trending' ? b.aura - a.aura : new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 
@@ -492,7 +522,7 @@ export default function Home() {
   )
 
   const otherProfiles = profiles.filter(p => p.id !== profile.id)
-  const TABS = ['feed', 'leaderboard', 'bank', 'help', 'profile']
+  const TABS = ['feed', 'friends', 'leaderboard', 'bank', 'help', 'profile']
 
   return (
     <div style={{ minHeight: '100vh', background: S.bg, fontFamily: "'Outfit', sans-serif", color: S.text }}>
@@ -553,6 +583,18 @@ export default function Home() {
                   </div>
                 </div>
               )}
+              {modalProfile.id !== profile.id && (() => {
+                const friendship = getFriendship(modalProfile.id)
+                return <div style={{ margin:'4px 0 16px' }}>
+                  {friendship?.status === 'accepted' ? (
+                    <button onClick={() => removeFriend(friendship.id)} style={{ padding:'7px 12px', borderRadius:9, border:`1px solid ${S.border2}`, background:'transparent', color:S.text2, cursor:'pointer' }}>Friends ✓</button>
+                  ) : friendship?.status === 'pending' ? (
+                    <span style={{ fontSize:12, color:S.text3 }}>{friendship.addressee_id === profile.id ? 'Friend request waiting in Friends' : 'Friend request pending'}</span>
+                  ) : (
+                    <button onClick={() => sendFriendRequest(modalProfile.id)} style={{ padding:'7px 12px', borderRadius:9, border:`1px solid ${S.blue}`, background:S.blueDim, color:S.blue, cursor:'pointer' }}>+ Add friend</button>
+                  )}
+                </div>
+              })()}
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 18 }}>
                 {getBadges(modalProfile).map(b => (
                   <span key={b} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 20, background: S.card2, border: `1px solid ${S.border2}`, color: S.text2 }}>{b}</span>
@@ -678,6 +720,50 @@ export default function Home() {
               onVote={handleVote} onOpenProfile={setModalProfile}
               onToggleComments={handleToggleComments} onComment={handleComment} />
           ))}
+        </>}
+
+        {tab === 'friends' && <>
+          <Card style={{ padding: 18, marginBottom: 10 }}>
+            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 4 }}>Friends</div>
+            <div style={{ fontSize: 13, color: S.text2 }}>Add people from Aura. Requests have to be accepted before they become friends.</div>
+          </Card>
+
+          {friendships.filter(f => f.status === 'pending' && f.addressee_id === profile.id).length > 0 && (
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, fontWeight: 600, color: S.text3, textTransform: 'uppercase', letterSpacing: 1.2, marginBottom: 8 }}>Requests</div>
+              {friendships.filter(f => f.status === 'pending' && f.addressee_id === profile.id).map(f => {
+                const u = profiles.find(p => p.id === f.requester_id)
+                if (!u) return null
+                return <Card key={f.id} style={{ padding: 14, marginBottom: 8, display:'flex', alignItems:'center', gap:10 }}>
+                  <Av p={u} size={36} />
+                  <span style={{ flex:1, fontWeight:600, fontSize:14 }}>{u.username}</span>
+                  <button onClick={() => respondFriendRequest(f.id, true)} style={{ padding:'6px 11px', borderRadius:8, border:'none', background:S.blue, color:'#fff', cursor:'pointer' }}>Accept</button>
+                  <button onClick={() => respondFriendRequest(f.id, false)} style={{ padding:'6px 11px', borderRadius:8, border:`1px solid ${S.border2}`, background:'transparent', color:S.text2, cursor:'pointer' }}>Decline</button>
+                </Card>
+              })}
+            </div>
+          )}
+
+          <div style={{ fontSize: 11, fontWeight: 600, color: S.text3, textTransform: 'uppercase', letterSpacing: 1.2, marginBottom: 8 }}>People</div>
+          {otherProfiles.map(u => {
+            const friendship = getFriendship(u.id)
+            const accepted = friendship?.status === 'accepted'
+            const pending = friendship?.status === 'pending'
+            return <Card key={u.id} style={{ padding: 14, marginBottom: 8, display:'flex', alignItems:'center', gap:10 }}>
+              <div onClick={() => setModalProfile(u)} style={{ cursor:'pointer' }}><Av p={u} size={38} /></div>
+              <div style={{ flex:1, minWidth:0, cursor:'pointer' }} onClick={() => setModalProfile(u)}>
+                <div style={{ fontWeight:600, fontSize:14 }}>{u.username}</div>
+                <div style={{ fontSize:11, color:S.text3 }}>{fmtAura(u.aura)} aura</div>
+              </div>
+              {accepted ? (
+                <button onClick={() => removeFriend(friendship.id)} style={{ padding:'6px 11px', borderRadius:8, border:`1px solid ${S.border2}`, background:'transparent', color:S.text2, cursor:'pointer' }}>Friends ✓</button>
+              ) : pending ? (
+                <span style={{ fontSize:12, color:S.text3 }}>{friendship.addressee_id === profile.id ? 'Requested you' : 'Pending'}</span>
+              ) : (
+                <button onClick={() => sendFriendRequest(u.id)} style={{ padding:'6px 11px', borderRadius:8, border:`1px solid ${S.blue}`, background:S.blueDim, color:S.blue, cursor:'pointer' }}>+ Friend</button>
+              )}
+            </Card>
+          })}
         </>}
 
         {tab === 'leaderboard' && <>
@@ -840,9 +926,16 @@ export default function Home() {
                   <span key={b} style={{ fontSize: 11, padding: '4px 11px', borderRadius: 20, background: S.card2, border: `1px solid ${S.border2}`, color: S.text2 }}>{b}</span>
                 ))}
               </div>
-              <button onClick={() => { setShowLedger(!showLedger); if (!showLedger) loadLedger() }} style={{ padding: '8px 18px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: `1px solid ${S.border2}`, background: showLedger ? S.blue : 'transparent', color: showLedger ? '#fff' : S.text2, cursor: 'pointer' }}>
-                📒 {showLedger ? 'Hide Ledger' : 'View Ledger'}
-              </button>
+              <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                <button onClick={() => { setShowLedger(!showLedger); if (!showLedger) loadLedger() }} style={{ padding: '8px 18px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: `1px solid ${S.border2}`, background: showLedger ? S.blue : 'transparent', color: showLedger ? '#fff' : S.text2, cursor: 'pointer' }}>
+                  📒 {showLedger ? 'Hide Ledger' : 'View Ledger'}
+                </button>
+                {pushSupported && (
+                  <button onClick={pushEnabled ? disablePush : enablePush} style={{ padding:'8px 18px', borderRadius:10, fontSize:13, fontWeight:600, border:`1px solid ${pushEnabled ? S.blue : S.border2}`, background:pushEnabled ? S.blueDim : 'transparent', color:pushEnabled ? S.blue : S.text2, cursor:'pointer' }}>
+                    🔔 {pushEnabled ? 'Notifications on' : 'Enable notifications'}
+                  </button>
+                )}
+              </div>
             </div>
           </Card>
 
