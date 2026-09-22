@@ -7,6 +7,8 @@ export default function proxy(request: NextRequest) {
     pathname === '/enter' ||
     pathname === '/api/access' ||
     pathname === '/manifest.json' ||
+    pathname === '/robots.txt' ||
+    pathname.startsWith('/api/cron/') ||
     pathname === '/sw.js' ||
     pathname.startsWith('/icon-') ||
     pathname.startsWith('/_next/')
