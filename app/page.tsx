@@ -48,8 +48,8 @@ const Av = ({ p, size = 36 }: { p: any; size?: number }) => (
   </div>
 )
 
-const Card = ({ children, style = {} }: any) => (
-  <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 16, ...style }}>{children}</div>
+const Card = ({ children, style = {}, ...props }: any) => (
+  <div {...props} style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 16, ...style }}>{children}</div>
 )
 
 const CommentInput = memo(({ postId, profile, onSubmit }: {
@@ -790,7 +790,7 @@ export default function Home() {
               ['Clown tax tiers', '25% / 35% / 50%'],
               ['Daily check-in reward', '+5 🔥'],
               ['Missed day penalty', '−2 per day missed'],
-              ['Cost to send +50 vote', '20 aura'],
+              ['Cost to send +50 vote', '5 aura'],
               ['Negative votes', 'Free'],
               ['Tagged users', 'split a 50% bonus pool'],
             ].map(([label, val]) => (
@@ -805,7 +805,7 @@ export default function Home() {
         {tab === 'help' && <>
           {[
             { title: '🔥 What is aura?', body: 'Your score on this site. Post something, people vote on it, your aura goes up or down. Simple.' },
-            { title: '🗳️ Voting', body: 'Vote +1 to +50 or negative on any post. Positive votes cost aura: +1 costs 1, +5 costs 2, +10 costs 5, and +50 costs 20. Changing a vote only charges or refunds the difference. Negative votes are free.' },
+            { title: '🗳️ Voting', body: 'Vote +1 to +50 or negative on any post. Positive votes cost aura: +1 and +5 are free, +10 costs 1, and +50 costs 5. Changing a vote only charges or refunds the difference. Negative votes are free.' },
             { title: '📍 Tagging', body: 'When making a post, tap "Tag people" to tag someone in it. If your post gets votes, tagged people split a 50% bonus pool so tagging cannot multiply aura without limit. Tag people who are actually in the post.' },
             { title: '📊 Profile votes', body: "You can vote on someone's whole profile, not just their posts. Tap their name or avatar anywhere to pull up their profile and rate their vibe." },
             { title: '🤡 Negative aura', body: 'Drop below 0 and clown emojis start showing on your profile. Clown mode now has escalating tiers: Clown, Big Clown, and Mega Clown. Positive gains are taxed 25%, 35%, or 50% into the prize pool, while negative users get a larger daily comeback check-in.' },
