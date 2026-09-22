@@ -7,6 +7,7 @@ export default function AuthPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [username, setUsername] = useState('')
+  const [inviteCode, setInviteCode] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
@@ -15,89 +16,109 @@ export default function AuthPage() {
     setLoading(true)
     setError('')
     setMessage('')
-    if (isLogin) {
-      const { error } = await supabase.auth.signInWithPassword({ email, password })
-      if (error) setError(error.message)
-      else window.location.href = '/'
-    } else {
-      if (!username.trim()) { setError('Username is required'); setLoading(false); return }
-      const { data, error } = await supabase.auth.signUp({ email, password })
-      if (error) { setError(error.message); setLoading(false); return }
-      if (data.user) {
-        const { error: profileError } = await supabase.from('profiles').insert({
-          id: data.user.id,
-          username: username.trim().toLowerCase().replace(/\s+/g, '_'),
-          aura: 100,
-          streak: 0,
+
+    try {
+      if (isLogin) {
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+        if (error) throw error
+        if (!data.user) throw new Error('Login failed.')
+
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('is_member')
+          .eq('id', data.user.id)
+          .maybeSingle()
+
+        if (!profile?.is_member) {
+          await supabase.auth.signOut()
+          throw new Error('This account does not have access to Aura.')
+        }
+        window.location.href = '/'
+      } else {
+        const response = await fetch('/api/signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password, username, inviteCode }),
         })
-        if (profileError) setError(profileError.message)
-        else { setIsLogin(true); setMessage('Account created! Please log in.') }
+        const result = await response.json()
+        if (!response.ok) throw new Error(result.error || 'Could not create account.')
+        setIsLogin(true)
+        setPassword('')
+        setInviteCode('')
+        setMessage('Account created. You can log in now.')
       }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong.')
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   return (
     <div style={{
-      minHeight: '100vh', background: '#f7f7f7', display: 'flex',
+      minHeight: '100vh', background: '#0d0d0d', display: 'flex',
       alignItems: 'center', justifyContent: 'center', padding: 20,
-      fontFamily: "'DM Sans', sans-serif"
+      fontFamily: "'DM Sans', sans-serif", color: '#f0f0f0'
     }}>
       <style>{`@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap');*{box-sizing:border-box}`}</style>
       <div style={{
-        background: '#fff', border: '1px solid #e8e8e8', borderRadius: 20,
+        background: '#161616', border: '1px solid #2a2a2a', borderRadius: 20,
         padding: 32, width: '100%', maxWidth: 400,
-        boxShadow: '0 4px 24px rgba(0,0,0,.06)'
+        boxShadow: '0 8px 40px rgba(0,0,0,.25)'
       }}>
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
           <div style={{ fontSize: 36, marginBottom: 4 }}>🔥</div>
           <div style={{ fontSize: 24, fontWeight: 600, letterSpacing: -.5 }}>aura</div>
-          <div style={{ fontSize: 13, color: '#999', marginTop: 4 }}>
-            {isLogin ? 'welcome back' : 'create your account'}
+          <div style={{ fontSize: 13, color: '#777', marginTop: 4 }}>
+            {isLogin ? 'members only' : 'invite required'}
           </div>
         </div>
-        {error && (
-          <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#dc2626', marginBottom: 16 }}>
-            {error}
-          </div>
-        )}
-        {message && (
-          <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#16a34a', marginBottom: 16 }}>
-            {message}
-          </div>
-        )}
+
+        {error && <div style={{ background: '#3b1515', border: '1px solid #6b2020', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#ff9b9b', marginBottom: 16 }}>{error}</div>}
+        {message && <div style={{ background: '#12351d', border: '1px solid #205f34', borderRadius: 10, padding: '10px 14px', fontSize: 13, color: '#98e8ae', marginBottom: 16 }}>{message}</div>}
+
         {!isLogin && (
-          <div style={{ marginBottom: 12 }}>
-            <div style={{ fontSize: 12, fontWeight: 500, color: '#555', marginBottom: 6 }}>Username</div>
-            <input value={username} onChange={e => setUsername(e.target.value)} placeholder="jake_energy"
-              style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid #e8e8e8', fontSize: 14, outline: 'none', background: '#fafafa' }} />
-          </div>
+          <>
+            <Field label="Username" value={username} onChange={setUsername} placeholder="jake_energy" />
+            <Field label="Invite code" value={inviteCode} onChange={setInviteCode} placeholder="your private invite code" />
+          </>
         )}
-        <div style={{ marginBottom: 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 500, color: '#555', marginBottom: 6 }}>Email</div>
-          <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="you@email.com"
-            style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid #e8e8e8', fontSize: 14, outline: 'none', background: '#fafafa' }} />
-        </div>
-        <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 12, fontWeight: 500, color: '#555', marginBottom: 6 }}>Password</div>
-          <input type="password" value={password} onChange={e => setPassword(e.target.value)} placeholder="••••••••"
-            style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid #e8e8e8', fontSize: 14, outline: 'none', background: '#fafafa' }} />
-        </div>
+        <Field label="Email" type="email" value={email} onChange={setEmail} placeholder="you@email.com" />
+        <Field label="Password" type="password" value={password} onChange={setPassword} placeholder="••••••••" />
+
         <button onClick={handleSubmit} disabled={loading} style={{
           width: '100%', padding: '12px', borderRadius: 12, border: 'none',
-          background: loading ? '#ccc' : '#0a0a0a', color: '#fff',
+          background: loading ? '#333' : '#3b82f6', color: '#fff',
           fontSize: 14, fontWeight: 600, cursor: loading ? 'default' : 'pointer', marginBottom: 16
         }}>
-          {loading ? 'Please wait...' : isLogin ? 'Log in' : 'Create account'}
+          {loading ? 'Please wait...' : isLogin ? 'Log in' : 'Create invited account'}
         </button>
-        <div style={{ textAlign: 'center', fontSize: 13, color: '#999' }}>
-          {isLogin ? "Don't have an account? " : "Already have an account? "}
+
+        <div style={{ textAlign: 'center', fontSize: 13, color: '#777' }}>
+          {isLogin ? 'Have an invite? ' : 'Already a member? '}
           <span onClick={() => { setIsLogin(!isLogin); setError(''); setMessage('') }}
-            style={{ color: '#0a0a0a', fontWeight: 500, cursor: 'pointer' }}>
-            {isLogin ? 'Sign up' : 'Log in'}
+            style={{ color: '#60a5fa', fontWeight: 500, cursor: 'pointer' }}>
+            {isLogin ? 'Create account' : 'Log in'}
           </span>
         </div>
       </div>
+    </div>
+  )
+}
+
+function Field({ label, value, onChange, placeholder, type = 'text' }: {
+  label: string
+  value: string
+  onChange: (value: string) => void
+  placeholder: string
+  type?: string
+}) {
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ fontSize: 12, fontWeight: 500, color: '#aaa', marginBottom: 6 }}>{label}</div>
+      <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
+        onKeyDown={e => { if (e.key === 'Enter') (e.currentTarget.form as any)?.requestSubmit?.() }}
+        style={{ width: '100%', padding: '10px 14px', borderRadius: 10, border: '1px solid #333', fontSize: 14, outline: 'none', background: '#1e1e1e', color: '#f0f0f0' }} />
     </div>
   )
 }
