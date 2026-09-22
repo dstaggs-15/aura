@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { requireUser, supabaseAdmin } from '@/lib/server'
+import { requireUser, getSupabaseAdmin } from '@/lib/server'
 import { sendPushToUsers } from '@/lib/push'
 
 export async function POST(request: Request) {
@@ -10,7 +10,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Invalid post.' }, { status: 400 })
     }
 
-    const { data: post, error: postError } = await supabaseAdmin
+    const { data: post, error: postError } = await getSupabaseAdmin()
       .from('posts')
       .select('id,user_id,text,profiles(username)')
       .eq('id', Number(postId))
@@ -21,7 +21,7 @@ export async function POST(request: Request) {
     }
 
     const eventKey = `post:${post.id}`
-    const { error: eventError } = await supabaseAdmin
+    const { error: eventError } = await getSupabaseAdmin()
       .from('notification_events')
       .insert({ event_key: eventKey })
 
@@ -30,13 +30,13 @@ export async function POST(request: Request) {
       throw eventError
     }
 
-    const { data: users } = await supabaseAdmin.from('profiles').select('id').neq('id', user.id)
+    const { data: users } = await getSupabaseAdmin().from('profiles').select('id').neq('id', user.id)
     const recipients = (users || []).map(u => u.id)
     const username = (post as any).profiles?.username || 'Someone'
     const preview = String(post.text || '').trim().slice(0, 90)
 
     if (recipients.length) {
-      await supabaseAdmin.from('notifications').insert(recipients.map(userId => ({
+      await getSupabaseAdmin().from('notifications').insert(recipients.map(userId => ({
         user_id: userId,
         actor_id: user.id,
         type: 'new_post',
