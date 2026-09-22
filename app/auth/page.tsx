@@ -21,17 +21,16 @@ export default function AuthPage() {
       else window.location.href = '/'
     } else {
       if (!username.trim()) { setError('Username is required'); setLoading(false); return }
-      const { data, error } = await supabase.auth.signUp({ email, password })
+      const cleanUsername = username.trim().toLowerCase().replace(/\s+/g, '_')
+      const { data, error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { data: { username: cleanUsername } },
+      })
       if (error) { setError(error.message); setLoading(false); return }
       if (data.user) {
-        const { error: profileError } = await supabase.from('profiles').insert({
-          id: data.user.id,
-          username: username.trim().toLowerCase().replace(/\s+/g, '_'),
-          aura: 100,
-          streak: 0,
-        })
-        if (profileError) setError(profileError.message)
-        else { setIsLogin(true); setMessage('Account created! Please log in.') }
+        setIsLogin(true)
+        setMessage('Account created! Please log in.')
       }
     }
     setLoading(false)
