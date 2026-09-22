@@ -116,19 +116,158 @@ create policy "weekly rounds authenticated read"
 on public.weekly_rounds for select to authenticated
 using (true);
 
--- Sensitive economy tables are read-only from the browser.
-revoke update on public.posts from authenticated;
+grant select on public.aura_ledger, public.votes, public.profile_votes, public.tax_bucket to authenticated;
+grant select on public.friendships, public.notifications, public.weekly_rounds to authenticated;
+
+-- Replace any legacy permissive policies on economy/content tables with explicit rules.
+do $
+declare
+  r record;
+begin
+  for r in
+    select schemaname, tablename, policyname
+    from pg_policies
+    where schemaname = 'public'
+      and tablename in ('profiles','posts','comments','post_tags','votes','profile_votes','aura_ledger','tax_bucket')
+  loop
+    execute format('drop policy if exists %I on %I.%I', r.policyname, r.schemaname, r.tablename);
+  end loop;
+end $;
+
+alter table public.profiles enable row level security;
+alter table public.posts enable row level security;
+alter table public.comments enable row level security;
+alter table public.post_tags enable row level security;
+alter table public.votes enable row level security;
+alter table public.profile_votes enable row level security;
+alter table public.aura_ledger enable row level security;
+alter table public.tax_bucket enable row level security;
+
+create policy "profiles authenticated read" on public.profiles for select to authenticated using (true);
+create policy "posts authenticated read" on public.posts for select to authenticated using (true);
+create policy "comments authenticated read" on public.comments for select to authenticated using (true);
+create policy "post tags authenticated read" on public.post_tags for select to authenticated using (true);
+create policy "votes authenticated read" on public.votes for select to authenticated using (true);
+create policy "profile votes authenticated read" on public.profile_votes for select to authenticated using (true);
+create policy "ledger owner read" on public.aura_ledger for select to authenticated using (auth.uid() = user_id);
+create policy "tax bucket authenticated read" on public.tax_bucket for select to authenticated using (true);
+
+revoke insert, update, delete on public.profiles from authenticated;
+revoke insert, update, delete on public.posts from authenticated;
+revoke insert, update, delete on public.comments from authenticated;
+revoke insert, update, delete on public.post_tags from authenticated;
 revoke insert, update, delete on public.votes from authenticated;
 revoke insert, update, delete on public.profile_votes from authenticated;
 revoke insert, update, delete on public.aura_ledger from authenticated;
-revoke update on public.tax_bucket from authenticated;
+revoke insert, update, delete on public.tax_bucket from authenticated;
 
--- Profiles remain editable only for non-economy fields from the client.
-revoke update on public.profiles from authenticated;
-grant update (bio, avatar_url, banner_url) on public.profiles to authenticated;
+-- Profile creation is tied to Supabase Auth metadata rather than trusting a browser-supplied user id.
+create or replace function public.handle_new_aura_user()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $
+declare
+  v_username text;
+begin
+  v_username := lower(regexp_replace(coalesce(new.raw_user_meta_data->>'username', split_part(new.email,'@',1), 'user'), '\s+', '_', 'g'));
+  insert into public.profiles(id, username, aura, aura_all_time, streak, created_at)
+  values(new.id, v_username, 100, 100, 0, now())
+  on conflict (id) do nothing;
+  return new;
+end;
+$;
 
-grant select on public.aura_ledger, public.votes, public.profile_votes, public.tax_bucket to authenticated;
-grant select on public.friendships, public.notifications, public.weekly_rounds to authenticated;
+drop trigger if exists on_auth_user_created_aura on auth.users;
+create trigger on_auth_user_created_aura
+after insert on auth.users
+for each row execute function public.handle_new_aura_user();
+
+create or replace function public.update_my_profile(
+  p_bio text default null,
+  p_avatar_url text default null,
+  p_banner_url text default null,
+  p_field text default 'bio'
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $
+declare
+  v_uid uuid := auth.uid();
+begin
+  if v_uid is null then raise exception 'not authenticated'; end if;
+  if p_field = 'bio' then
+    update public.profiles set bio = left(coalesce(p_bio,''), 280) where id=v_uid;
+  elsif p_field = 'avatar' then
+    update public.profiles set avatar_url = p_avatar_url where id=v_uid;
+  elsif p_field = 'banner' then
+    update public.profiles set banner_url = p_banner_url where id=v_uid;
+  else
+    raise exception 'invalid field';
+  end if;
+end;
+$;
+grant execute on function public.update_my_profile(text,text,text,text) to authenticated;
+
+create or replace function public.create_post(
+  p_text text,
+  p_image_url text default null,
+  p_tagged_ids uuid[] default '{}'::uuid[]
+)
+returns bigint
+language plpgsql
+security definer
+set search_path = public
+as $
+declare
+  v_uid uuid := auth.uid();
+  v_post_id bigint;
+begin
+  if v_uid is null then raise exception 'not authenticated'; end if;
+  if length(trim(coalesce(p_text,''))) = 0 then raise exception 'post text required'; end if;
+  if length(p_text) > 2000 then raise exception 'post is too long'; end if;
+
+  insert into public.posts(user_id,text,image_url,aura)
+  values(v_uid,trim(p_text),p_image_url,0)
+  returning id into v_post_id;
+
+  insert into public.post_tags(post_id,tagged_user_id)
+  select v_post_id, x
+  from unnest(coalesce(p_tagged_ids,'{}'::uuid[])) x
+  where x <> v_uid and exists(select 1 from public.profiles where id=x)
+  on conflict do nothing;
+
+  return v_post_id;
+end;
+$;
+grant execute on function public.create_post(text,text,uuid[]) to authenticated;
+
+create or replace function public.create_comment(p_post_id bigint, p_text text)
+returns bigint
+language plpgsql
+security definer
+set search_path = public
+as $
+declare
+  v_uid uuid := auth.uid();
+  v_comment_id bigint;
+begin
+  if v_uid is null then raise exception 'not authenticated'; end if;
+  if length(trim(coalesce(p_text,''))) = 0 then raise exception 'comment text required'; end if;
+  if length(p_text) > 1000 then raise exception 'comment is too long'; end if;
+  if not exists(select 1 from public.posts where id=p_post_id) then raise exception 'post not found'; end if;
+
+  insert into public.comments(post_id,user_id,text)
+  values(p_post_id,v_uid,trim(p_text))
+  returning id into v_comment_id;
+
+  return v_comment_id;
+end;
+$;
+grant execute on function public.create_comment(bigint,text) to authenticated;
 
 -- Internal helpers. Never grant these directly to app users.
 create or replace function public._aura_vote_cost(v integer)
@@ -606,7 +745,7 @@ security definer
 set search_path = public
 as $$
 declare
-  v_end timestamptz := date_trunc('week', now());
+  v_end timestamptz := date_trunc('day', now()) - (extract(dow from now())::int * interval '1 day');
   v_start timestamptz := v_end - interval '7 days';
   v_existing bigint;
   v_post_id bigint;
