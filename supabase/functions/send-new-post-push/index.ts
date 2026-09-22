@@ -1,5 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { sendNotification } from 'npm:web-push-neo@0.1.2'
+import webpush from 'npm:web-push@3.6.7'
 
 const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -47,6 +47,16 @@ Deno.serve(async req => {
     const recipientIds = (recipients || []).map(r => r.id)
     if (!recipientIds.length) return Response.json({ ok: true, sent: 0 }, { headers: cors })
 
+    const { data: alreadySent } = await admin.from('notifications')
+      .select('id')
+      .eq('type', 'new_post')
+      .eq('post_id', post.id)
+      .limit(1)
+
+    if (alreadySent?.length) {
+      return Response.json({ ok: true, sent: 0, duplicate: true }, { headers: cors })
+    }
+
     const message = `${post.profiles.username} posted: ${String(post.text).slice(0, 110)}`
     await admin.from('notifications').upsert(
       recipientIds.map(id => ({
@@ -66,7 +76,8 @@ Deno.serve(async req => {
     let sent = 0
     await Promise.all((subscriptions || []).map(async sub => {
       try {
-        await sendNotification(
+        webpush.setVapidDetails(vapidSubject, vapidPublic, vapidPrivate)
+        await webpush.sendNotification(
           { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
           JSON.stringify({
             title: `🔥 ${post.profiles.username} posted`,
@@ -74,15 +85,7 @@ Deno.serve(async req => {
             url: '/',
             tag: `post-${post.id}`,
           }),
-          {
-            vapidDetails: {
-              subject: vapidSubject,
-              publicKey: vapidPublic,
-              privateKey: vapidPrivate,
-            },
-            TTL: 3600,
-            urgency: 'high',
-          },
+          { TTL: 3600, urgency: 'high' },
         )
         sent++
       } catch (err) {
