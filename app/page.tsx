@@ -52,22 +52,60 @@ const Card = ({ children, style = {}, ...props }: any) => (
   <div {...props} style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 16, ...style }}>{children}</div>
 )
 
-const CommentInput = memo(({ postId, profile, onSubmit }: {
-  postId: number; profile: any; onSubmit: (postId: number, text: string) => void
+const CommentInput = memo(({ postId, profile, profiles, onSubmit }: {
+  postId: number; profile: any; profiles: any[]; onSubmit: (postId: number, text: string) => void
 }) => {
   const inputRef = useRef<HTMLInputElement>(null)
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null)
+  const updateMentionQuery = (value: string, caret = value.length) => {
+    const beforeCaret = value.slice(0, caret)
+    const match = beforeCaret.match(/(?:^|\\s)@([\\w]*)$/)
+    setMentionQuery(match ? match[1].toLowerCase() : null)
+  }
+  const suggestions = mentionQuery === null ? [] : profiles
+    .filter(p => p.id !== profile.id && p.username.toLowerCase().startsWith(mentionQuery))
+    .slice(0, 6)
+  const chooseMention = (username: string) => {
+    const input = inputRef.current
+    if (!input) return
+    const caret = input.selectionStart ?? input.value.length
+    const before = input.value.slice(0, caret).replace(/(?:^|\\s)@[\\w]*$/, m => {
+      const prefix = m.startsWith(' ') ? ' ' : ''
+      return `${prefix}@${username} `
+    })
+    input.value = before + input.value.slice(caret)
+    setMentionQuery(null)
+    input.focus()
+    requestAnimationFrame(() => input.setSelectionRange(before.length, before.length))
+  }
   const handleSubmit = () => {
     const text = inputRef.current?.value?.trim()
     if (!text) return
     onSubmit(postId, text)
     if (inputRef.current) inputRef.current.value = ''
+    setMentionQuery(null)
   }
   return (
-    <div style={{ display: 'flex', gap: 8, marginTop: 6 }}>
+    <div style={{ display: 'flex', gap: 8, marginTop: 6, position: 'relative' }}>
       <Av p={profile} size={26} />
-      <input ref={inputRef} type="text" placeholder="add a comment..." dir="ltr"
-        onKeyDown={e => { if (e.key === 'Enter') handleSubmit() }}
-        style={{ flex: 1, background: S.card2, border: `1px solid ${S.border2}`, borderRadius: 20, padding: '7px 14px', fontSize: 13, color: S.text, outline: 'none', fontFamily: 'inherit', direction: 'ltr' } as any} />
+      <div style={{ flex: 1, position: 'relative' }}>
+        {suggestions.length > 0 && (
+          <div style={{ position: 'absolute', left: 0, right: 0, bottom: 'calc(100% + 6px)', zIndex: 120, background: S.card, border: `1px solid ${S.border2}`, borderRadius: 12, overflow: 'hidden', boxShadow: '0 8px 30px rgba(0,0,0,.45)' }}>
+            {suggestions.map(p => (
+              <button key={p.id} type="button" onMouseDown={e => e.preventDefault()} onClick={() => chooseMention(p.username)}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 9, padding: '9px 12px', background: 'transparent', border: 'none', borderBottom: `1px solid ${S.border}`, color: S.text, cursor: 'pointer', textAlign: 'left' }}>
+                <Av p={p} size={26} />
+                <span style={{ fontSize: 13, fontWeight: 600 }}>@{p.username}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        <input ref={inputRef} type="text" placeholder="add a comment..." dir="ltr"
+          onChange={e => updateMentionQuery(e.target.value, e.target.selectionStart ?? e.target.value.length)}
+          onKeyUp={e => { if (e.key !== 'Enter') updateMentionQuery(e.currentTarget.value, e.currentTarget.selectionStart ?? e.currentTarget.value.length) }}
+          onKeyDown={e => { if (e.key === 'Enter' && suggestions.length === 0) handleSubmit() }}
+          style={{ width: '100%', boxSizing: 'border-box', background: S.card2, border: `1px solid ${S.border2}`, borderRadius: 20, padding: '7px 14px', fontSize: 13, color: S.text, outline: 'none', fontFamily: 'inherit', direction: 'ltr' } as any} />
+      </div>
       <button onClick={handleSubmit} style={{ padding: '7px 14px', borderRadius: 20, background: S.blue, border: 'none', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Post</button>
     </div>
   )
@@ -172,7 +210,7 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
                 </div>
               )
             })}
-            <CommentInput postId={post.id} profile={profile} onSubmit={onComment} />
+            <CommentInput postId={post.id} profile={profile} profiles={profiles} onSubmit={onComment} />
           </div>
         )}
       </div>
