@@ -440,7 +440,8 @@ export default function Home() {
 
   const handleComment = async (postId: number, text: string) => {
     if (!profile || !text.trim()) return
-    const { data } = await supabase.from('comments').insert({ post_id: postId, user_id: profile.id, text: text.trim() }).select('*, profiles(*)').single()
+    const { data, error } = await supabase.from('comments').insert({ post_id: postId, user_id: profile.id, text: text.trim() }).select('*').single()
+    if (error) { notify(`Could not post comment: ${error.message}`, 'neg'); return }
     if (data) {
       setComments(c => ({ ...c, [postId]: [...(c[postId] || []), data] }))
       setCommentCounts(c => ({ ...c, [postId]: (c[postId] || 0) + 1 }))
