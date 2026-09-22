@@ -122,7 +122,7 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
         {isOwn
           ? <span style={{ fontSize: 11, color: S.text3 }}>your post</span>
           : <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-              {[-10, -5, -1, 1, 5, 10].map(v => {
+              {VOTE_OPTS.map(v => {
                 const active = myVote === v
                 const neg = v < 0
                 return (
@@ -573,7 +573,7 @@ export default function Home() {
                 <div style={{ marginBottom: 16 }}>
                   <div style={{ fontSize: 11, color: S.text3, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>Rate their vibe</div>
                   <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-                    {VOTE_OPTS.map(v => {
+                    {[-10, -5, -1, 1, 5, 10].map(v => {
                       const active = profileVotes[modalProfile.id] === v
                       const neg = v < 0
                       return (
