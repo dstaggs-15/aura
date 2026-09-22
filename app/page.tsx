@@ -1,12 +1,25 @@
 'use client'
 import { useState, useEffect, useRef, memo } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Profile, Post, Comment, LedgerEntry } from '@/lib/types'
+import { Profile, Post, Comment, LedgerEntry, Friendship } from '@/lib/types'
 
 const VOTE_OPTS = [-50, -10, -5, -1, 1, 5, 10, 50]
-const VOTE_COST: Record<string, number> = { "50": 5, "10": 1, "5": .5, "1": .5, "-1": 0, "-5": 0, "-10": 0, "-50": 0 }
 const fmtAura = (n: number) => (n >= 0 ? "+" : "") + n.toLocaleString()
 const clownCount = (a: number) => a < -499 ? 3 : a < -99 ? 2 : a < 0 ? 1 : 0
+const clownTitle = (a: number) => a <= -500 ? 'Mega Clown' : a <= -100 ? 'Big Clown' : a < 0 ? 'Clown' : null
+const currentWeekStart = () => {
+  const d = new Date()
+  const diff = (d.getUTCDay() + 6) % 7
+  d.setUTCDate(d.getUTCDate() - diff)
+  d.setUTCHours(0, 0, 0, 0)
+  return d
+}
+const urlBase64ToUint8Array = (value: string) => {
+  const padding = '='.repeat((4 - value.length % 4) % 4)
+  const base64 = (value + padding).replace(/-/g, '+').replace(/_/g, '/')
+  const raw = window.atob(base64)
+  return Uint8Array.from([...raw].map(ch => ch.charCodeAt(0)))
+}
 const timeAgo = (ts: string) => {
   const mins = Math.round((Date.now() - new Date(ts).getTime()) / 60000)
   if (mins < 1) return 'just now'
@@ -204,6 +217,9 @@ export default function Home() {
   const [openComments, setOpenComments] = useState<Record<number, boolean>>({})
   const [ledger, setLedger] = useState<LedgerEntry[]>([])
   const [showLedger, setShowLedger] = useState(false)
+  const [friendships, setFriendships] = useState<Friendship[]>([])
+  const [pushEnabled, setPushEnabled] = useState(false)
+  const [pushBusy, setPushBusy] = useState(false)
   const toastTimer = useRef<any>(null)
   const fileRef = useRef<HTMLInputElement>(null)
   const postImageRef = useRef<HTMLInputElement>(null)
@@ -218,52 +234,55 @@ export default function Home() {
     })
   }, [])
 
-  const applyLoginPenalty = async (uid: string, prof: Profile) => {
-    if (!prof.last_checkin) return
-    const daysSince = Math.floor((Date.now() - new Date(prof.last_checkin).getTime()) / 86400000)
-    if (daysSince <= 1) return
-    const penalty = Math.min(daysSince * 2, 20)
-    const newAura = Math.round((prof.aura - penalty) * 10) / 10
-    await supabase.from('profiles').update({ aura: newAura, streak: 0 }).eq('id', uid)
-    await supabase.from('aura_ledger').insert({ user_id: uid, amount: -penalty, type: 'inactivity', description: `Missed ${daysSince} days — streak reset`, balance_after: newAura })
-    return { newAura, penalty }
-  }
-
   const loadAll = async (uid: string) => {
-    const [{ data: profs }, { data: ps }, { data: bucket }, { data: vs }, { data: counts }, { data: tags }] = await Promise.all([
+    const [
+      { data: profs }, { data: ps }, { data: bucket }, { data: vs },
+      { data: counts }, { data: tags }, { data: pvs }, { data: friendshipRows },
+    ] = await Promise.all([
       supabase.from('profiles').select('*'),
       supabase.from('posts').select('*, profiles(*)').order('created_at', { ascending: false }),
       supabase.from('tax_bucket').select('*').single(),
       supabase.from('votes').select('*').eq('voter_id', uid),
       supabase.from('post_comment_counts').select('*'),
       supabase.from('post_tags').select('*'),
+      supabase.from('profile_votes').select('*').eq('voter_id', uid),
+      supabase.from('friendships').select('*').order('created_at', { ascending: false }),
     ])
+
     if (profs) {
-      setProfiles(profs)
-      const myProf = profs.find((p: Profile) => p.id === uid)
-      if (myProf) {
-        const result = await applyLoginPenalty(uid, myProf)
-        if (result) {
-          setProfile({ ...myProf, aura: result.newAura, streak: 0 })
-          setProfiles(profs.map((p: Profile) => p.id === uid ? { ...p, aura: result.newAura, streak: 0 } : p))
-          notify(`📉 −${result.penalty} aura for missing days`, 'neg')
-        } else {
-          setProfile(myProf)
-        }
+      const visible = profs.filter((p: Profile) => p.is_member)
+      setProfiles(visible)
+      const myProf = visible.find((p: Profile) => p.id === uid)
+      if (!myProf) {
+        await supabase.auth.signOut()
+        window.location.href = '/auth'
+        return
       }
+      setProfile(myProf)
     }
     if (ps) setPosts(ps)
-    if (bucket) setTaxBucket(bucket.amount)
+    if (bucket) setTaxBucket(Number(bucket.amount) || 0)
     if (vs) { const m: Record<number, number> = {}; vs.forEach((v: any) => m[v.post_id] = v.value); setMyVotes(m) }
-    if (counts) { const m: Record<number, number> = {}; counts.forEach((c: any) => m[c.post_id] = Number(c.count)); setCommentCounts(m) }
+    if (counts) { const m: Record<number, number> = {}; counts.forEach((x: any) => m[x.post_id] = Number(x.count)); setCommentCounts(m) }
     if (tags) {
       const m: Record<number, string[]> = {}
       tags.forEach((t: any) => { if (!m[t.post_id]) m[t.post_id] = []; m[t.post_id].push(t.tagged_user_id) })
       setPostTags(m)
     }
-    const { data: pvs } = await supabase.from('profile_votes').select('*').eq('voter_id', uid)
     if (pvs) { const m: Record<string, number> = {}; pvs.forEach((v: any) => m[v.target_id] = v.value); setProfileVotes(m) }
+    if (friendshipRows) setFriendships(friendshipRows)
   }
+
+  useEffect(() => {
+    if (!profile?.id) return
+    const channel = supabase.channel('aura-live')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => loadAll(profile.id))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => loadAll(profile.id))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, () => loadAll(profile.id))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'friendships' }, () => loadAll(profile.id))
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [profile?.id])
 
   const notify = (msg: string, type = 'neutral') => {
     setToast({ msg, type })
@@ -271,109 +290,79 @@ export default function Home() {
     toastTimer.current = setTimeout(() => setToast(null), 2400)
   }
 
-  const updateAura = async (userId: string, newAura: number, type: string, description: string) => {
-    // Always fetch fresh aura from DB before writing ledger
-    const { data: fresh } = await supabase.from('profiles').select('aura, aura_all_time').eq('id', userId).single()
-    const currentAura = fresh ? fresh.aura : newAura
-    const diff = Math.round((newAura - currentAura) * 10) / 10
-    const finalAura = Math.round((currentAura + diff) * 10) / 10
-    const newAllTime = fresh ? Math.max(fresh.aura_all_time || 0, finalAura) : finalAura
-    await supabase.from('profiles').update({ aura: finalAura, aura_all_time: newAllTime }).eq('id', userId)
-    await supabase.from('aura_ledger').insert({ user_id: userId, amount: diff, type, description, balance_after: finalAura })
-    return finalAura
-  }
-
   const handleVote = async (postId: number, val: number) => {
     if (!profile) return
-    const prev = myVotes[postId] ?? 0
-    if (prev === val) return
-    const cost = val > 0 ? (VOTE_COST[String(val)] ?? 0) : 0
-    const post = posts.find(p => p.id === postId)
-    if (!post) return
-
-    if (prev === 0) {
-      await supabase.from('votes').insert({ voter_id: profile.id, post_id: postId, value: val })
-    } else {
-      await supabase.from('votes').update({ value: val }).eq('voter_id', profile.id).eq('post_id', postId)
-    }
-
-    const newPostAura = post.aura - prev + val
-    await supabase.from('posts').update({ aura: newPostAura }).eq('id', postId)
-
-    // Update voter aura
-    let newMyAura = profile.aura
-    if (cost > 0) {
-      newMyAura = await updateAura(profile.id, profile.aura - cost, 'vote_cost', `Sent +${val} vote`)
-      setProfile(p => p ? { ...p, aura: newMyAura } : p)
-      setProfiles(ps => ps.map(p => p.id === profile.id ? { ...p, aura: newMyAura } : p))
-    }
-
-    // Update post owner aura
-    const owner = profiles.find(p => p.id === post.user_id)
-    if (owner && owner.id !== profile.id) {
-      let gain = val - prev
-      if (owner.aura < 0 && gain > 0) {
-        const tax = gain * 0.25
-        const newBucket = Math.round((taxBucket + tax) * 10) / 10
-        await supabase.from('tax_bucket').update({ amount: newBucket }).eq('id', 1)
-        setTaxBucket(newBucket)
-        gain *= 0.75
-      }
-      const newOwnerAura = await updateAura(owner.id, owner.aura + gain, 'post_vote', `${val > 0 ? '+' : ''}${val} vote on your post`)
-      setProfiles(ps => ps.map(p => p.id === owner.id ? { ...p, aura: newOwnerAura } : p))
-
-      // Tagged users get 50% of owner gain — skip only if tagged user IS the owner
-      const tagged = postTags[postId] || []
-      for (const taggedId of tagged) {
-        if (taggedId === owner.id) continue  // owner can't double dip
-        const taggedUser = profiles.find(p => p.id === taggedId)
-        if (!taggedUser) continue
-        const taggedGain = Math.round((gain * 0.5) * 10) / 10
-        if (taggedGain === 0) continue
-        const newTaggedAura = await updateAura(taggedId, taggedUser.aura + taggedGain, 'tag_share', `Tagged in a post that got voted`)
-        setProfiles(ps => ps.map(p => p.id === taggedId ? { ...p, aura: newTaggedAura } : p))
-        if (profile.id === taggedId) {
-          setProfile(p => p ? { ...p, aura: newTaggedAura } : p)
-        }
-      }
-    }
-
-    setMyVotes(v => ({ ...v, [postId]: val }))
-    setPosts(ps => ps.map(p => p.id === postId ? { ...p, aura: newPostAura } : p))
-    notify(val > 0 ? `+${val} aura sent` : `${val} aura sent`, val > 0 ? 'pos' : 'neg')
+    const { data, error } = await supabase.rpc('cast_post_vote', { p_post_id: postId, p_value: val })
+    if (error) { notify(error.message, 'neg'); return }
+    if (data?.reason === 'anti_glaze') notify('🚫 Anti-glaze penalty: −50 aura', 'neg')
+    else notify(val > 0 ? `+${val} vote sent` : `${val} vote sent`, val > 0 ? 'pos' : 'neg')
+    await loadAll(profile.id)
   }
 
   const handleProfileVote = async (targetId: string, val: number) => {
     if (!profile || targetId === profile.id) return
-    const prev = profileVotes[targetId] ?? 0
-    if (prev === val) return
-    if (prev === 0) {
-      await supabase.from('profile_votes').insert({ voter_id: profile.id, target_id: targetId, value: val })
-    } else {
-      await supabase.from('profile_votes').update({ value: val }).eq('voter_id', profile.id).eq('target_id', targetId)
-    }
-    const gain = val - prev
-    const target = profiles.find(p => p.id === targetId)
-    if (target) {
-      const newAura = await updateAura(targetId, target.aura + gain, 'profile_vote', `Profile vote`)
-      setProfiles(ps => ps.map(p => p.id === targetId ? { ...p, aura: newAura } : p))
-      if (modalProfile?.id === targetId) setModalProfile(mp => mp ? { ...mp, aura: newAura } : mp)
-    }
-    setProfileVotes(v => ({ ...v, [targetId]: val }))
-    notify(val > 0 ? `+${val} to their profile` : `${val} to their profile`, val > 0 ? 'pos' : 'neg')
+    const { data, error } = await supabase.rpc('cast_profile_vote', { p_target_id: targetId, p_value: val })
+    if (error) { notify(error.message, 'neg'); return }
+    if (data?.reason === 'anti_glaze') notify('🚫 Anti-glaze penalty: −50 aura', 'neg')
+    else notify(val > 0 ? `+${val} profile vote` : `${val} profile vote`, val > 0 ? 'pos' : 'neg')
+    await loadAll(profile.id)
   }
 
   const handleCheckIn = async () => {
     if (!profile) return
-    const today = new Date().toISOString().split('T')[0]
-    if (profile.last_checkin === today) { notify('Already checked in today'); return }
-    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0]
-    const newStreak = profile.last_checkin === yesterday ? profile.streak + 1 : 1
-    const newAura = await updateAura(profile.id, profile.aura + 5, 'checkin', `Day ${newStreak} check-in`)
-    await supabase.from('profiles').update({ streak: newStreak, last_checkin: today }).eq('id', profile.id)
-    setProfile(p => p ? { ...p, aura: newAura, streak: newStreak, last_checkin: today } : p)
-    setProfiles(ps => ps.map(p => p.id === profile.id ? { ...p, aura: newAura, streak: newStreak, last_checkin: today } : p))
-    notify(`🔥 +5 aura — ${newStreak} day streak!`, 'pos')
+    const { data, error } = await supabase.rpc('daily_checkin')
+    if (error) { notify(error.message, 'neg'); return }
+    if (!data?.ok) { notify('Already checked in today'); return }
+    notify(`🔥 +${data.reward} aura — ${data.streak} day streak!`, 'pos')
+    await loadAll(profile.id)
+  }
+
+  const friendshipWith = (targetId: string) =>
+    friendships.find(f =>
+      (f.requester_id === profile?.id && f.addressee_id === targetId) ||
+      (f.addressee_id === profile?.id && f.requester_id === targetId)
+    )
+
+  const handleFriend = async (targetId: string, action: 'request' | 'accept' | 'remove') => {
+    if (!profile) return
+    const { error } = await supabase.rpc('manage_friend_request', { p_target_id: targetId, p_action: action })
+    if (error) { notify(error.message, 'neg'); return }
+    notify(action === 'accept' ? 'Friend added' : action === 'remove' ? 'Friend removed' : 'Friend request sent', 'pos')
+    await loadAll(profile.id)
+  }
+
+  const enablePushNotifications = async () => {
+    if (!profile || pushBusy) return
+    setPushBusy(true)
+    try {
+      if (!('serviceWorker' in navigator) || !('PushManager' in window)) throw new Error('Push is not supported in this browser.')
+      const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+      if (!publicKey) throw new Error('Push is not configured yet.')
+      const permission = await Notification.requestPermission()
+      if (permission !== 'granted') throw new Error('Notifications were not allowed.')
+      const registration = await navigator.serviceWorker.register('/sw.js')
+      const existing = await registration.pushManager.getSubscription()
+      const subscription = existing || await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
+      })
+      const json = subscription.toJSON()
+      if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) throw new Error('Could not create a push subscription.')
+      const { error } = await supabase.from('push_subscriptions').upsert({
+        user_id: profile.id,
+        endpoint: json.endpoint,
+        p256dh: json.keys.p256dh,
+        auth: json.keys.auth,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'endpoint' })
+      if (error) throw error
+      setPushEnabled(true)
+      notify('Browser notifications enabled', 'pos')
+    } catch (err) {
+      notify(err instanceof Error ? err.message : 'Could not enable notifications', 'neg')
+    } finally {
+      setPushBusy(false)
+    }
   }
 
   const handlePost = async () => {
@@ -401,6 +390,8 @@ export default function Home() {
       setSelectedTags([])
       setComposing(false)
       notify('Posted 🔥')
+      const { error: pushError } = await supabase.functions.invoke('send-new-post-push', { body: { post_id: data.id } })
+      if (pushError) console.warn('Push fanout failed:', pushError.message)
     }
     setPosting(false)
   }
@@ -471,7 +462,8 @@ export default function Home() {
   }
 
   const checkedInToday = profile?.last_checkin === new Date().toISOString().split('T')[0]
-  const topPost = [...posts].sort((a, b) => b.aura - a.aura)[0]
+  const weeklyPosts = posts.filter(p => new Date(p.created_at) >= currentWeekStart())
+  const topPost = [...weeklyPosts].sort((a, b) => b.aura - a.aura)[0]
   const topPostUser = topPost ? profiles.find(p => p.id === topPost.user_id) : null
   const sorted = [...posts].sort((a, b) => filter === 'trending' ? b.aura - a.aura : new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
 
@@ -492,7 +484,7 @@ export default function Home() {
   )
 
   const otherProfiles = profiles.filter(p => p.id !== profile.id)
-  const TABS = ['feed', 'leaderboard', 'bank', 'help', 'profile']
+  const TABS = ['feed', 'leaderboard', 'friends', 'bank', 'help', 'profile']
 
   return (
     <div style={{ minHeight: '100vh', background: S.bg, fontFamily: "'Outfit', sans-serif", color: S.text }}>
@@ -539,6 +531,18 @@ export default function Home() {
                   </div>
                 ))}
               </div>
+              {modalProfile.id !== profile.id && (() => {
+                const friendship = friendshipWith(modalProfile.id)
+                const incoming = friendship?.status === 'pending' && friendship.addressee_id === profile.id
+                return (
+                  <div style={{ marginBottom: 14 }}>
+                    {!friendship && <button onClick={() => handleFriend(modalProfile.id, 'request')} style={{ padding: '7px 14px', borderRadius: 9, border: `1px solid ${S.blue}`, background: S.blueDim, color: S.blue, cursor: 'pointer', fontWeight: 600 }}>＋ Add friend</button>}
+                    {incoming && <button onClick={() => handleFriend(modalProfile.id, 'accept')} style={{ padding: '7px 14px', borderRadius: 9, border: 'none', background: S.blue, color: '#fff', cursor: 'pointer', fontWeight: 600 }}>Accept friend request</button>}
+                    {friendship?.status === 'pending' && !incoming && <span style={{ fontSize: 12, color: S.text3 }}>Friend request pending</span>}
+                    {friendship?.status === 'accepted' && <button onClick={() => handleFriend(modalProfile.id, 'remove')} style={{ padding: '7px 14px', borderRadius: 9, border: `1px solid ${S.border2}`, background: 'transparent', color: S.text2, cursor: 'pointer' }}>✓ Friends · Remove</button>}
+                  </div>
+                )
+              })()}
               {modalProfile.id !== profile.id && (
                 <div style={{ marginBottom: 16 }}>
                   <div style={{ fontSize: 11, color: S.text3, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>Rate their vibe</div>
@@ -708,7 +712,7 @@ export default function Home() {
               </Card>
             )
           })}
-          {lbTab === 'posts' && [...posts].sort((a, b) => b.aura - a.aura).map((p, i) => {
+          {lbTab === 'posts' && [...weeklyPosts].sort((a, b) => b.aura - a.aura).map((p, i) => {
             const owner = profiles.find(u => u.id === p.user_id)
             if (!owner) return null
             const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null
@@ -727,6 +731,39 @@ export default function Home() {
               </Card>
             )
           })}
+        </>}
+
+        {tab === 'friends' && <>
+          <Card style={{ padding: 18, marginBottom: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: S.text3, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>Friend requests</div>
+            {friendships.filter(f => f.status === 'pending' && f.addressee_id === profile.id).length === 0 && <p style={{ fontSize: 13, color: S.text3 }}>No pending requests.</p>}
+            {friendships.filter(f => f.status === 'pending' && f.addressee_id === profile.id).map(f => {
+              const u = profiles.find(p => p.id === f.requester_id)
+              if (!u) return null
+              return <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: `1px solid ${S.border}` }}>
+                <Av p={u} size={34} />
+                <span onClick={() => setModalProfile(u)} style={{ flex: 1, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>{u.username}</span>
+                <button onClick={() => handleFriend(u.id, 'accept')} style={{ padding: '6px 12px', borderRadius: 8, border: 'none', background: S.blue, color: '#fff', cursor: 'pointer' }}>Accept</button>
+                <button onClick={() => handleFriend(u.id, 'remove')} style={{ padding: '6px 10px', borderRadius: 8, border: `1px solid ${S.border2}`, background: 'transparent', color: S.text2, cursor: 'pointer' }}>Decline</button>
+              </div>
+            })}
+          </Card>
+          <Card style={{ padding: 18 }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: S.text3, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>Your friends</div>
+            {friendships.filter(f => f.status === 'accepted').length === 0 && <p style={{ fontSize: 13, color: S.text3 }}>No friends yet. Open a profile to add someone.</p>}
+            {friendships.filter(f => f.status === 'accepted').map(f => {
+              const friendId = f.requester_id === profile.id ? f.addressee_id : f.requester_id
+              const u = profiles.find(p => p.id === friendId)
+              if (!u) return null
+              return <div key={f.id} onClick={() => setModalProfile(u)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: `1px solid ${S.border}`, cursor: 'pointer' }}>
+                <Av p={u} size={36} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>{u.username} {clownCount(u.aura) > 0 && '🤡'.repeat(clownCount(u.aura))}</div>
+                  <div style={{ fontSize: 11, color: S.text3 }}>{fmtAura(u.aura)} aura</div>
+                </div>
+              </div>
+            })}
+          </Card>
         </>}
 
         {tab === 'bank' && <>
@@ -751,12 +788,12 @@ export default function Home() {
             {[
               ['Total aura in circulation', fmtAura(profiles.reduce((s, u) => s + u.aura, 0))],
               ['Users in clown mode', `${profiles.filter(u => u.aura < 0).length} 🤡`],
-              ['Tax rate on negative users', '25%'],
+              ['Clown tax tiers', '25% / 35% / 50%'],
               ['Daily check-in reward', '+5 🔥'],
               ['Missed day penalty', '−2 per day missed'],
-              ['Cost to send +50 vote', '5 aura'],
+              ['Cost to send +50 vote', '20 aura'],
               ['Negative votes', 'Free'],
-              ['Tagged in a post', '50% of poster\'s gain'],
+              ['Tagged users', 'split a 50% bonus pool'],
             ].map(([label, val]) => (
               <div key={label as string} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: `1px solid ${S.border}` }}>
                 <span style={{ fontSize: 13, color: S.text2 }}>{label}</span>
@@ -769,12 +806,12 @@ export default function Home() {
         {tab === 'help' && <>
           {[
             { title: '🔥 What is aura?', body: 'Your score on this site. Post something, people vote on it, your aura goes up or down. Simple.' },
-            { title: '🗳️ Voting', body: 'Vote +1 to +50 or negative on any post. Positive votes cost you a small amount of your own aura. Negative votes are free.' },
-            { title: '📍 Tagging', body: 'When making a post, tap "Tag people" to tag someone in it. If your post gets votes, tagged people earn 50% of what you earn. Tag people who are actually in the post.' },
+            { title: '🗳️ Voting', body: 'Vote +1 to +50 or negative on any post. Positive votes cost aura: +1 costs 1, +5 costs 2, +10 costs 5, and +50 costs 20. Changing a vote only charges or refunds the difference. Negative votes are free.' },
+            { title: '📍 Tagging', body: 'When making a post, tap "Tag people" to tag someone in it. If your post gets votes, tagged people split a 50% bonus pool so tagging cannot multiply aura without limit. Tag people who are actually in the post.' },
             { title: '📊 Profile votes', body: "You can vote on someone's whole profile, not just their posts. Tap their name or avatar anywhere to pull up their profile and rate their vibe." },
-            { title: '🤡 Negative aura', body: 'Drop below 0 and clown emojis start showing on your profile. You also only keep 75% of aura you earn while negative — the rest goes into the prize pool.' },
+            { title: '🤡 Negative aura', body: 'Drop below 0 and clown emojis start showing on your profile. Clown mode now has escalating tiers: Clown, Big Clown, and Mega Clown. Positive gains are taxed 25%, 35%, or 50% into the prize pool, while negative users get a larger daily comeback check-in.' },
             { title: '🏆 Prize pool', body: 'Every Sunday at midnight, whoever has the highest-aura post that week wins the entire pool. The pool fills from the 25% tax on negative users.' },
-            { title: '🔥 Streaks', body: 'Hit Check In every day for +5 aura. Miss a day and your streak resets and you lose 2 aura per missed day (max 20). Log in daily or fall behind.' },
+            { title: '🔥 Streaks', body: 'Hit Check In every day for +5 aura, or +7 while in clown mode. Miss a day and your streak resets and you lose 2 aura per missed day (max 20). Log in daily or fall behind.' },
             { title: '🚫 Glazing', body: "Max 3 big votes (+50 or -50) to the same person per 24 hours. Go over that and you get hit with -50. Don't glaze." },
             { title: '💬 Comments', body: 'Tap the comment button on any post to see and leave comments.' },
             { title: '📒 Ledger', body: 'Go to your Profile and tap Ledger to see every aura transaction — what you gained, lost, and when.' },
@@ -840,9 +877,23 @@ export default function Home() {
                   <span key={b} style={{ fontSize: 11, padding: '4px 11px', borderRadius: 20, background: S.card2, border: `1px solid ${S.border2}`, color: S.text2 }}>{b}</span>
                 ))}
               </div>
-              <button onClick={() => { setShowLedger(!showLedger); if (!showLedger) loadLedger() }} style={{ padding: '8px 18px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: `1px solid ${S.border2}`, background: showLedger ? S.blue : 'transparent', color: showLedger ? '#fff' : S.text2, cursor: 'pointer' }}>
+              {profile.aura < 0 && (
+                <div style={{ background: S.redDim, border: `1px solid ${S.red}`, borderRadius: 12, padding: 14, marginBottom: 14 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13, color: '#fff', marginBottom: 6 }}>🤡 {clownTitle(profile.aura)} mode</div>
+                  <div style={{ fontSize: 12, color: '#f3b5b5', marginBottom: 8 }}>{Math.abs(profile.aura).toFixed(1)} aura until you escape. Negative users get a +7 check-in comeback reward; higher clown tiers pay more tax on positive gains.</div>
+                  <div style={{ height: 6, background: '#260d0d', borderRadius: 99, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${Math.max(4, Math.min(100, 100 - Math.abs(profile.aura) / 5))}%`, background: S.red }} />
+                  </div>
+                </div>
+              )}
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button onClick={enablePushNotifications} disabled={pushBusy || pushEnabled} style={{ padding: '8px 18px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: `1px solid ${pushEnabled ? S.blue : S.border2}`, background: pushEnabled ? S.blueDim : 'transparent', color: pushEnabled ? S.blue : S.text2, cursor: pushBusy || pushEnabled ? 'default' : 'pointer' }}>
+                  {pushEnabled ? '🔔 Notifications enabled' : pushBusy ? 'Enabling...' : '🔔 Enable post notifications'}
+                </button>
+                <button onClick={() => { setShowLedger(!showLedger); if (!showLedger) loadLedger() }} style={{ padding: '8px 18px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: `1px solid ${S.border2}`, background: showLedger ? S.blue : 'transparent', color: showLedger ? '#fff' : S.text2, cursor: 'pointer' }}>
                 📒 {showLedger ? 'Hide Ledger' : 'View Ledger'}
-              </button>
+                </button>
+              </div>
             </div>
           </Card>
 

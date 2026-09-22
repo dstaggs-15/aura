@@ -9,6 +9,8 @@ export type Profile = {
   streak: number
   last_checkin: string | null
   created_at: string
+  is_member: boolean
+  notify_new_posts: boolean
 }
 
 export type Post = {
@@ -58,5 +60,25 @@ export type PostTag = {
   id: number
   post_id: number
   tagged_user_id: string
+  created_at: string
+}
+
+export type Friendship = {
+  id: number
+  requester_id: string
+  addressee_id: string
+  status: 'pending' | 'accepted'
+  created_at: string
+  updated_at: string
+}
+
+export type Notification = {
+  id: number
+  user_id: string
+  actor_id: string | null
+  type: string
+  post_id: number | null
+  message: string
+  read_at: string | null
   created_at: string
 }
