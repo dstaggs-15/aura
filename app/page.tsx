@@ -318,21 +318,30 @@ export default function Home() {
   const handlePost = async () => {
     if (!draftRef.current.trim() || !profile || posting) return
     setPosting(true)
-    let image_url = null
-    if (postImage) {
-      const ext = postImage.name.split('.').pop()
-      const path = `${profile.id}-${Date.now()}.${ext}`
-      await supabase.storage.from('posts').upload(path, postImage, { upsert: true })
-      const { data: urlData } = supabase.storage.from('posts').getPublicUrl(path)
-      image_url = urlData.publicUrl
-    }
-    const { data } = await supabase.from('posts').insert({ user_id: profile.id, text: draftRef.current.trim(), aura: 0, image_url }).select('*, profiles(*)').single()
-    if (data) {
-      if (selectedTags.length > 0) {
-        await supabase.from('post_tags').insert(selectedTags.map(uid => ({ post_id: data.id, tagged_user_id: uid })))
+    try {
+      let image_url = null
+      if (postImage) {
+        const ext = postImage.name.split('.').pop()
+        const path = `${profile.id}-${Date.now()}.${ext}`
+        const { error: uploadError } = await supabase.storage.from('posts').upload(path, postImage, { upsert: true })
+        if (uploadError) throw uploadError
+        const { data: urlData } = supabase.storage.from('posts').getPublicUrl(path)
+        image_url = urlData.publicUrl
+      }
+
+      const { data: postId, error } = await supabase.rpc('create_post', {
+        p_text: draftRef.current.trim(),
+        p_image_url: image_url,
+        p_tagged_ids: selectedTags,
+      })
+      if (error) throw error
+
+      const { data } = await supabase.from('posts').select('*, profiles(*)').eq('id', postId).single()
+      if (data) {
+        setPosts(ps => [data, ...ps])
         setPostTags(t => ({ ...t, [data.id]: selectedTags }))
       }
-      setPosts(ps => [data, ...ps])
+
       draftRef.current = ''
       const ta = document.getElementById('post-textarea') as HTMLTextAreaElement
       if (ta) ta.value = ''
@@ -340,22 +349,28 @@ export default function Home() {
       setSelectedTags([])
       setComposing(false)
       notify('Posted 🔥')
+
       const { data: sessionData } = await supabase.auth.getSession()
       const token = sessionData.session?.access_token
       if (token) {
         fetch('/api/push/post', {
           method: 'POST',
           headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-          body: JSON.stringify({ postId: data.id }),
+          body: JSON.stringify({ postId }),
         }).catch(() => {})
       }
+    } catch (err: any) {
+      notify(err?.message || 'Could not post', 'neg')
+    } finally {
+      setPosting(false)
     }
-    setPosting(false)
   }
 
   const handleComment = async (postId: number, text: string) => {
     if (!profile || !text.trim()) return
-    const { data } = await supabase.from('comments').insert({ post_id: postId, user_id: profile.id, text: text.trim() }).select('*, profiles(*)').single()
+    const { data: commentId, error } = await supabase.rpc('create_comment', { p_post_id: postId, p_text: text.trim() })
+    if (error) { notify(error.message, 'neg'); return }
+    const { data } = await supabase.from('comments').select('*, profiles(*)').eq('id', commentId).single()
     if (data) {
       setComments(c => ({ ...c, [postId]: [...(c[postId] || []), data] }))
       setCommentCounts(c => ({ ...c, [postId]: (c[postId] || 0) + 1 }))
@@ -378,7 +393,8 @@ export default function Home() {
     const path = `${profile.id}.${ext}`
     await supabase.storage.from('avatars').upload(path, file, { upsert: true })
     const { data } = supabase.storage.from('avatars').getPublicUrl(path)
-    await supabase.from('profiles').update({ avatar_url: data.publicUrl }).eq('id', profile.id)
+    const { error } = await supabase.rpc('update_my_profile', { p_avatar_url: data.publicUrl, p_field: 'avatar' })
+    if (error) { notify(error.message, 'neg'); return }
     setProfile(p => p ? { ...p, avatar_url: data.publicUrl } : p)
     setProfiles(ps => ps.map(p => p.id === profile.id ? { ...p, avatar_url: data.publicUrl } : p))
     notify('Photo updated', 'pos')
@@ -391,7 +407,8 @@ export default function Home() {
     const path = `banner-${profile.id}.${ext}`
     await supabase.storage.from('avatars').upload(path, file, { upsert: true })
     const { data } = supabase.storage.from('avatars').getPublicUrl(path)
-    await supabase.from('profiles').update({ banner_url: data.publicUrl }).eq('id', profile.id)
+    const { error } = await supabase.rpc('update_my_profile', { p_banner_url: data.publicUrl, p_field: 'banner' })
+    if (error) { notify(error.message, 'neg'); return }
     setProfile(p => p ? { ...p, banner_url: data.publicUrl } : p)
     setProfiles(ps => ps.map(p => p.id === profile.id ? { ...p, banner_url: data.publicUrl } : p))
     notify('Banner updated', 'pos')
@@ -400,7 +417,8 @@ export default function Home() {
   const handleSaveBio = async () => {
     if (!profile) return
     const bio = bioRef.current
-    await supabase.from('profiles').update({ bio }).eq('id', profile.id)
+    const { error } = await supabase.rpc('update_my_profile', { p_bio: bio, p_field: 'bio' })
+    if (error) { notify(error.message, 'neg'); return }
     setProfile(p => p ? { ...p, bio } : p)
     setProfiles(ps => ps.map(p => p.id === profile.id ? { ...p, bio } : p))
     setEditingBio(false)
