@@ -1,5 +1,5 @@
 import webpush from 'web-push'
-import { supabaseAdmin } from '@/lib/server'
+import { getSupabaseAdmin } from '@/lib/server'
 
 const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
 const privateKey = process.env.VAPID_PRIVATE_KEY
@@ -19,7 +19,7 @@ export type PushPayload = {
 export async function sendPushToUsers(userIds: string[], payload: PushPayload) {
   if (!publicKey || !privateKey || userIds.length === 0) return { sent: 0, failed: 0 }
 
-  const { data: subscriptions, error } = await supabaseAdmin
+  const { data: subscriptions, error } = await getSupabaseAdmin()
     .from('push_subscriptions')
     .select('id,user_id,endpoint,p256dh,auth')
     .in('user_id', userIds)
@@ -38,7 +38,7 @@ export async function sendPushToUsers(userIds: string[], payload: PushPayload) {
     } catch (err: any) {
       failed++
       if (err?.statusCode === 404 || err?.statusCode === 410) {
-        await supabaseAdmin.from('push_subscriptions').delete().eq('id', sub.id)
+        await getSupabaseAdmin().from('push_subscriptions').delete().eq('id', sub.id)
       }
     }
   }))
