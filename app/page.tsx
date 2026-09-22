@@ -489,12 +489,15 @@ export default function Home() {
     if (!profile || !e.target.files?.[0]) return
     const file = e.target.files[0]
     const ext = file.name.split('.').pop()
-    const path = `banner-${profile.id}.${ext}`
-    await supabase.storage.from('avatars').upload(path, file, { upsert: true })
+    const path = `banner-${profile.id}-${Date.now()}.${ext}`
+    const { error: uploadError } = await supabase.storage.from('avatars').upload(path, file)
+    if (uploadError) { notify(uploadError.message, 'neg'); return }
     const { data } = supabase.storage.from('avatars').getPublicUrl(path)
-    await supabase.from('profiles').update({ banner_url: data.publicUrl }).eq('id', profile.id)
-    setProfile(p => p ? { ...p, banner_url: data.publicUrl } : p)
-    setProfiles(ps => ps.map(p => p.id === profile.id ? { ...p, banner_url: data.publicUrl } : p))
+    const bannerUrl = `${data.publicUrl}?v=${Date.now()}`
+    const { error: updateError } = await supabase.from('profiles').update({ banner_url: bannerUrl }).eq('id', profile.id)
+    if (updateError) { notify(updateError.message, 'neg'); return }
+    setProfile(p => p ? { ...p, banner_url: bannerUrl } : p)
+    setProfiles(ps => ps.map(p => p.id === profile.id ? { ...p, banner_url: bannerUrl } : p))
     notify('Banner updated', 'pos')
   }
 
@@ -980,8 +983,8 @@ export default function Home() {
             : posts.filter(p => p.user_id === profile.id).map(p => (
               <PostCard key={p.id} post={p} profile={profile} profiles={profiles} myVote={myVotes[p.id]}
                 comments={comments[p.id] || []} commentCount={commentCounts[p.id] || 0}
-                isCommentsOpen={openComments[p.id] || false} tags={postTags[p.id] || []}
-                onVote={handleVote} onOpenProfile={setModalProfile}
+                isCommentsOpen={openComments[p.id] || false} tags={postTags[p.id] || []} commentVotes={commentVotes}
+                onVote={handleVote} onCommentVote={handleCommentVote} onOpenProfile={setModalProfile}
                 onToggleComments={handleToggleComments} onComment={handleComment} />
             ))
           }
