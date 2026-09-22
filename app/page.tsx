@@ -217,6 +217,19 @@ export default function Home() {
     let channel: any
     supabase.auth.getUser().then(async ({ data }) => {
       if (!data.user) { window.location.href = '/auth'; return }
+      const { data: sessionData } = await supabase.auth.getSession()
+      const accessToken = sessionData.session?.access_token
+      if (accessToken) {
+        const membership = await fetch('/api/membership/claim', {
+          method: 'POST',
+          headers: { authorization: `Bearer ${accessToken}` },
+        })
+        if (!membership.ok) {
+          await supabase.auth.signOut()
+          window.location.href = '/auth'
+          return
+        }
+      }
       await loadAll(data.user.id)
       setPushSupported('serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window)
       if ('serviceWorker' in navigator) {
