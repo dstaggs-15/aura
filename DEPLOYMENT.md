@@ -1,92 +1,47 @@
-# Aura deployment checklist
+# Aura deployment notes
 
-This branch moves Aura's economy to database RPCs, adds invite-only signup, friends, browser push notifications, realtime refreshes, weekly settlement, and stricter RLS.
+Aura is now configured so the production app does not require manual invite-code, service-role, or VAPID environment-variable setup in Vercel.
 
-## 1. Apply the database migration
+## Supabase
 
-Apply:
+Already applied to the Aura project:
 
-`supabase/migrations/20260922193000_harden_aura.sql`
+- secure economy/ledger migration
+- friends and notification tables
+- anti-glazing event history
+- clown tiers and recovery check-ins
+- weekly settlement and inactivity jobs
+- member-only RLS
+- Realtime replication for posts, profiles, comments, and friendships
+- invite membership claim RPC
+- `send-new-post-push` Edge Function
 
-This migration:
+Keep the tracked migrations in `supabase/migrations` as the schema history.
 
-- marks existing profiles as members
-- adds invite/member flags
-- adds friends, notification, push subscription, vote event, and weekly round tables
-- moves aura changes into atomic PostgreSQL functions
-- fixes vote-cost deltas and tagged-user bonus inflation
-- enforces anti-glazing
-- adds clown tax tiers and recovery check-ins
-- schedules inactivity penalties and weekly prize settlement when pg_cron is available
-- locks data down with member-only RLS
+## Vercel
 
-Do not deploy the frontend before the migration is applied because the frontend calls the new RPC functions.
-
-## 2. Configure Vercel environment variables
-
-Copy the names from `.env.example`.
-
-Required:
+The app only needs the existing Supabase public environment variables:
 
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY`
-- `AURA_INVITE_CODE`
-- `NEXT_PUBLIC_VAPID_PUBLIC_KEY`
 
-`SUPABASE_SERVICE_ROLE_KEY` and `AURA_INVITE_CODE` must remain server-only.
+No private service-role key is required by the Next.js app.
 
-## 3. Generate VAPID keys
+## Invite-only access
 
-Generate one Web Push VAPID key pair. Put the public key in Vercel as `NEXT_PUBLIC_VAPID_PUBLIC_KEY`.
+Public users may reach the login screen, but Aura data is protected by RLS. A new authenticated account cannot read or use Aura until the membership-claim RPC accepts the private invite code and creates an approved profile.
 
-Configure these Supabase Edge Function secrets:
+Existing Aura profiles remain approved members.
 
-- `VAPID_PUBLIC_KEY`
-- `VAPID_PRIVATE_KEY`
-- `VAPID_SUBJECT`
+## Browser push
 
-The public key must match the Vercel public key.
+Users opt in from their Profile page. The service worker stores a Web Push subscription in Supabase. When a member creates a post, the deployed Edge Function fans that post out to all other members who opted into new-post notifications.
 
-## 4. Deploy the Edge Function
+The browser still requires the user to grant notification permission. Mobile support depends on the browser/PWA's Web Push support.
 
-Deploy:
+## Economy
 
-`supabase/functions/send-new-post-push`
-
-The function verifies that the caller owns the post, creates notification records once, sends Web Push to every other member who opted in, and removes dead browser subscriptions.
-
-## 5. Realtime
-
-For live feed/friend/profile refreshes, make sure Realtime replication is enabled for:
-
-- `posts`
-- `profiles`
-- `comments`
-- `friendships`
-
-The app still works without Realtime, but other users' changes will not appear instantly.
-
-## 6. Private access model
-
-Aura is now invite-only:
-
-- public self-signup was removed
-- new users need `AURA_INVITE_CODE`
-- new profiles are created server-side with `is_member=true`
-- RLS blocks anonymous reads
-- authenticated accounts without an Aura member profile are signed out
-- robots metadata and `robots.txt` prevent normal search indexing
-
-The login page can still be reached by someone who knows the URL, but they cannot read Aura data without an authorized account.
-
-## 7. Push support
-
-Users enable notifications from their Profile page. Browser push works on supported desktop browsers and mobile browsers/PWAs that implement Web Push. Permission must be granted by the user.
-
-## 8. Economy changes
-
-Positive vote costs are now:
+Positive vote costs:
 
 | Vote | Cost |
 | --- | ---: |
@@ -95,16 +50,16 @@ Positive vote costs are now:
 | +10 | 5 |
 | +50 | 20 |
 
-Changing a vote only charges/refunds the cost difference. Negative votes remain free.
+Changing a vote charges or refunds only the difference in vote cost.
 
-Tagged users split one 50% bonus pool rather than each receiving 50%.
+Tagged users split a single 50% bonus pool.
 
-Clown tax tiers:
+Clown-mode positive-gain tax:
 
 - below 0: 25%
 - at or below -100: 35%
 - at or below -500: 50%
 
-Negative users receive +7 for a daily check-in instead of +5.
+Negative users receive +7 aura for daily check-in instead of +5.
 
-The current weekly top post now only considers posts from the current week. The scheduled settlement pays the pool and resets it.
+The weekly leaderboard only considers the current week and the scheduled settlement pays and resets the prize pool.
