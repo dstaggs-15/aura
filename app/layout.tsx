@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 
 export const metadata: Metadata = {
   title: "Aura",
-  description: "Track your aura",
+  description: "Private Aura social app",
+  robots: { index: false, follow: false, nocache: true },
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
