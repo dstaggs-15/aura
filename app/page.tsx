@@ -569,6 +569,15 @@ export default function Home() {
   return (
     <div style={{ minHeight: '100vh', background: S.bg, fontFamily: "'Outfit', sans-serif", color: S.text }}>
       <style>{`
+        html, body { width:100%; max-width:100%; overflow-x:hidden; -webkit-text-size-adjust:100%; }
+        * { box-sizing:border-box; }
+        img, video { max-width:100%; }
+        button, input, textarea, select { max-width:100%; }
+        @media (max-width: 480px) {
+          .aura-shell { padding-left:10px !important; padding-right:10px !important; }
+          .aura-votes { gap:5px !important; padding-left:10px !important; padding-right:10px !important; }
+          .aura-votes button { flex:1 1 42px !important; min-width:0 !important; padding-left:4px !important; padding-right:4px !important; }
+        }
         @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
         html { -webkit-text-size-adjust: 100%; }
@@ -582,7 +591,7 @@ export default function Home() {
       `}</style>
 
       {toast && (
-        <div style={{ position: 'fixed', top: 16, left: '50%', zIndex: 999, pointerEvents: 'none', transform: 'translateX(-50%)', animation: 'toastIn .2s ease', background: toast.type === 'pos' ? S.blue : toast.type === 'neg' ? S.red : '#222', color: '#fff', padding: '9px 20px', borderRadius: 99, fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap' }}>{toast.msg}</div>
+        <div style={{ position: 'fixed', top: 16, left: '50%', zIndex: 999, pointerEvents: 'none', transform: 'translateX(-50%)', animation: 'toastIn .2s ease', background: toast.type === 'pos' ? S.blue : toast.type === 'neg' ? S.red : '#222', color: '#fff', padding: '9px 20px', borderRadius: 99, fontSize: 13, fontWeight: 500, whiteSpace: 'normal', maxWidth: 'calc(100vw - 28px)', boxSizing: 'border-box', textAlign: 'center', overflowWrap: 'anywhere' }}>{toast.msg}</div>
       )}
 
       {modalProfile && (
@@ -688,7 +697,7 @@ export default function Home() {
         ))}
       </div>
 
-      <div style={{ maxWidth: 600, margin: '0 auto', padding: 14 }}>
+      <div className="aura-shell" style={{ width: '100%', maxWidth: 600, margin: '0 auto', padding: 14, overflowX: 'hidden' }}>
 
         {tab === 'feed' && <>
           {composing ? (
