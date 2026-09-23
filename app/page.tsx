@@ -53,7 +53,7 @@ const Card = ({ children, style = {}, ...props }: any) => (
 )
 
 const CommentInput = memo(({ postId, profile, profiles, onSubmit }: {
-  postId: number; profile: any; profiles: any[]; onSubmit: (postId: number, text: string) => void
+  postId: number; profile: any; profiles: any[]; onSubmit: (postId: number, text: string) => Promise<boolean>
 }) => {
   const inputRef = useRef<HTMLInputElement>(null)
   const [mentionQuery, setMentionQuery] = useState<string | null>(null)
@@ -78,10 +78,11 @@ const CommentInput = memo(({ postId, profile, profiles, onSubmit }: {
     input.focus()
     requestAnimationFrame(() => input.setSelectionRange(before.length, before.length))
   }
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const text = inputRef.current?.value?.trim()
     if (!text) return
-    onSubmit(postId, text)
+    const posted = await onSubmit(postId, text)
+    if (!posted) return
     if (inputRef.current) inputRef.current.value = ''
     setMentionQuery(null)
   }
@@ -104,7 +105,7 @@ const CommentInput = memo(({ postId, profile, profiles, onSubmit }: {
           onChange={e => updateMentionQuery(e.target.value, e.target.selectionStart ?? e.target.value.length)}
           onKeyUp={e => { if (e.key !== 'Enter') updateMentionQuery(e.currentTarget.value, e.currentTarget.selectionStart ?? e.currentTarget.value.length) }}
           onKeyDown={e => { if (e.key === 'Enter' && suggestions.length === 0) handleSubmit() }}
-          style={{ width: '100%', boxSizing: 'border-box', background: S.card2, border: `1px solid ${S.border2}`, borderRadius: 20, padding: '7px 14px', fontSize: 13, color: S.text, outline: 'none', fontFamily: 'inherit', direction: 'ltr' } as any} />
+          style={{ width: '100%', boxSizing: 'border-box', background: S.card2, border: `1px solid ${S.border2}`, borderRadius: 20, padding: '7px 14px', fontSize: 16, color: S.text, outline: 'none', fontFamily: 'inherit', direction: 'ltr' } as any} />
       </div>
       <button onClick={handleSubmit} style={{ padding: '7px 14px', borderRadius: 20, background: S.blue, border: 'none', color: '#fff', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Post</button>
     </div>
@@ -131,7 +132,7 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
   onVote: (postId: number, val: number) => void; onCommentVote: (commentId: number, val: number) => void;
   onOpenProfile: (p: any) => void;
   onToggleComments: (postId: number) => void;
-  onComment: (postId: number, text: string) => void;
+  onComment: (postId: number, text: string) => Promise<boolean>;
 }) => {
   const owner = profiles.find((p: any) => p.id === post.user_id)
   if (!owner) return null
@@ -455,14 +456,16 @@ export default function Home() {
     setPosting(false)
   }
 
-  const handleComment = async (postId: number, text: string) => {
-    if (!profile || !text.trim()) return
+  const handleComment = async (postId: number, text: string): Promise<boolean> => {
+    if (!profile || !text.trim()) return false
     const { data, error } = await supabase.from('comments').insert({ post_id: postId, user_id: profile.id, text: text.trim() }).select('*').single()
-    if (error) { notify(`Could not post comment: ${error.message}`, 'neg'); return }
+    if (error) { notify(`Could not post comment: ${error.message}`, 'neg'); return false }
     if (data) {
       setComments(c => ({ ...c, [postId]: [...(c[postId] || []), data] }))
       setCommentCounts(c => ({ ...c, [postId]: (c[postId] || 0) + 1 }))
+      return true
     }
+    return false
   }
 
   const handleCommentVote = async (commentId: number, val: number) => {
@@ -567,7 +570,7 @@ export default function Home() {
   const TABS = ['feed', 'leaderboard', 'friends', 'bank', 'help', 'profile']
 
   return (
-    <div style={{ minHeight: '100vh', background: S.bg, fontFamily: "'Outfit', sans-serif", color: S.text }}>
+    <div style={{ minHeight: '100vh', width: '100%', maxWidth: '100vw', overflowX: 'hidden', background: S.bg, fontFamily: "'Outfit', sans-serif", color: S.text }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap');
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -582,7 +585,7 @@ export default function Home() {
       `}</style>
 
       {toast && (
-        <div style={{ position: 'fixed', top: 16, left: '50%', zIndex: 999, pointerEvents: 'none', transform: 'translateX(-50%)', animation: 'toastIn .2s ease', background: toast.type === 'pos' ? S.blue : toast.type === 'neg' ? S.red : '#222', color: '#fff', padding: '9px 20px', borderRadius: 99, fontSize: 13, fontWeight: 500, whiteSpace: 'nowrap' }}>{toast.msg}</div>
+        <div style={{ position: 'fixed', top: 16, left: '50%', zIndex: 999, pointerEvents: 'none', transform: 'translateX(-50%)', animation: 'toastIn .2s ease', background: toast.type === 'pos' ? S.blue : toast.type === 'neg' ? S.red : '#222', color: '#fff', padding: '9px 20px', borderRadius: 99, fontSize: 13, fontWeight: 500, whiteSpace: 'normal', overflowWrap: 'anywhere', textAlign: 'center', maxWidth: 'calc(100vw - 24px)' }}>{toast.msg}</div>
       )}
 
       {modalProfile && (
