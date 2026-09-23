@@ -125,9 +125,9 @@ const renderText = (text: string, color = '#ccc') => {
   )
 }
 
-const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount, isCommentsOpen, tags, commentVotes, onVote, onCommentVote, onOpenProfile, onToggleComments, onComment }: {
+const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount, isCommentsOpen, tags, commentVotes, postVotes, onVote, onCommentVote, onOpenProfile, onToggleComments, onComment }: {
   post: any; profile: any; profiles: any[]; myVote: number | undefined;
-  comments: any[]; commentCount: number; isCommentsOpen: boolean; tags: string[]; commentVotes: Record<number, number>;
+  comments: any[]; commentCount: number; isCommentsOpen: boolean; tags: string[]; commentVotes: Record<number, number>; postVotes: any[];
   onVote: (postId: number, val: number) => void; onCommentVote: (commentId: number, val: number) => void;
   onOpenProfile: (p: any) => void;
   onToggleComments: (postId: number) => void;
@@ -138,6 +138,7 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
   const isOwn = post.user_id === profile?.id
   const cc = clownCount(owner.aura)
   const taggedUsers = tags.map(id => profiles.find((p: any) => p.id === id)).filter(Boolean)
+  const [showVotes, setShowVotes] = useState(false)
 
   return (
     <Card style={{ marginBottom: 8 }}>
@@ -169,7 +170,7 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
       </div>
 
       <div style={{ padding: '10px 16px 12px', borderTop: `1px solid ${S.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-        <span style={{ fontFamily: 'monospace', fontSize: 14, fontWeight: 700, color: post.aura >= 0 ? S.blue : S.red }}>{fmtAura(post.aura)}</span>
+        <button onClick={() => setShowVotes(!showVotes)} style={{ background: 'transparent', border: 'none', padding: 0, fontFamily: 'monospace', fontSize: 14, fontWeight: 700, color: post.aura >= 0 ? S.blue : S.red, cursor: 'pointer' }}>{fmtAura(post.aura)}</button>
         {isOwn
           ? <span style={{ fontSize: 11, color: S.text3 }}>your post</span>
           : <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
@@ -190,6 +191,9 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
         }
       </div>
 
+      {showVotes && <div style={{ padding: '8px 16px 10px', borderTop: `1px solid ${S.border}`, fontSize: 12 }}>
+        {postVotes.length === 0 ? <span style={{ color: S.text3 }}>No votes yet.</span> : postVotes.map((v: any) => { const vp=profiles.find((p:any)=>p.id===v.voter_id); return <div key={v.voter_id} style={{ display:'flex',justifyContent:'space-between',padding:'4px 0' }}><span style={{ color:S.text2 }}>@{vp?.username || 'user'}</span><b style={{ color:v.value>=0?S.blue:S.red }}>{fmtAura(v.value)}</b></div> })}
+      </div>}
       <div style={{ borderTop: `1px solid ${S.border}` }}>
         <button onClick={() => onToggleComments(post.id)} style={{ width: '100%', padding: '10px 16px', background: 'transparent', border: 'none', color: S.text3, fontSize: 12, cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 6 }}>
           💬 {commentCount > 0 ? `${commentCount} comment${commentCount !== 1 ? 's' : ''}` : 'Add a comment'} {isCommentsOpen ? '▲' : '▼'}
@@ -257,6 +261,7 @@ export default function Home() {
   const [profileVotes, setProfileVotes] = useState<Record<string, number>>({})
   const [comments, setComments] = useState<Record<number, Comment[]>>({})
   const [commentVotes, setCommentVotes] = useState<Record<number, number>>({})
+  const [allPostVotes, setAllPostVotes] = useState<any[]>([])
   const [openComments, setOpenComments] = useState<Record<number, boolean>>({})
   const [ledger, setLedger] = useState<LedgerEntry[]>([])
   const [showLedger, setShowLedger] = useState(false)
@@ -277,10 +282,20 @@ export default function Home() {
     })
   }, [])
 
+  useEffect(() => {
+    if (!profile?.id || !('serviceWorker' in navigator) || !('PushManager' in window)) return
+    navigator.serviceWorker.register('/sw.js').then(async registration => {
+      const subscription = await registration.pushManager.getSubscription()
+      if (!subscription) { setPushEnabled(false); return }
+      const { data } = await supabase.from('push_subscriptions').select('endpoint').eq('user_id', profile.id).eq('endpoint', subscription.endpoint).maybeSingle()
+      setPushEnabled(!!data)
+    }).catch(() => setPushEnabled(false))
+  }, [profile?.id])
+
   const loadAll = async (uid: string) => {
     const [
       { data: profs }, { data: ps }, { data: bucket }, { data: vs },
-      { data: counts }, { data: tags }, { data: pvs }, { data: friendshipRows },
+      { data: counts }, { data: tags }, { data: pvs }, { data: friendshipRows }, { data: allVotes },
     ] = await Promise.all([
       supabase.from('profiles').select('*'),
       supabase.from('posts').select('*, profiles(*)').order('created_at', { ascending: false }),
@@ -290,6 +305,7 @@ export default function Home() {
       supabase.from('post_tags').select('*'),
       supabase.from('profile_votes').select('*').eq('voter_id', uid),
       supabase.from('friendships').select('*').order('created_at', { ascending: false }),
+      supabase.from('votes').select('post_id,voter_id,value'),
     ])
 
     if (profs) {
@@ -314,6 +330,7 @@ export default function Home() {
     }
     if (pvs) { const m: Record<string, number> = {}; pvs.forEach((v: any) => m[v.target_id] = v.value); setProfileVotes(m) }
     if (friendshipRows) setFriendships(friendshipRows)
+    if (allVotes) setAllPostVotes(allVotes)
   }
 
   useEffect(() => {
@@ -741,7 +758,7 @@ export default function Home() {
           {sorted.map(p => (
             <PostCard key={p.id} post={p} profile={profile} profiles={profiles} myVote={myVotes[p.id]}
               comments={comments[p.id] || []} commentCount={commentCounts[p.id] || 0}
-              isCommentsOpen={openComments[p.id] || false} tags={postTags[p.id] || []} commentVotes={commentVotes}
+              isCommentsOpen={openComments[p.id] || false} tags={postTags[p.id] || []} commentVotes={commentVotes} postVotes={allPostVotes.filter(v => v.post_id === p.id)}
               onVote={handleVote} onCommentVote={handleCommentVote} onOpenProfile={setModalProfile}
               onToggleComments={handleToggleComments} onComment={handleComment} />
           ))}
@@ -985,7 +1002,7 @@ export default function Home() {
             : posts.filter(p => p.user_id === profile.id).map(p => (
               <PostCard key={p.id} post={p} profile={profile} profiles={profiles} myVote={myVotes[p.id]}
                 comments={comments[p.id] || []} commentCount={commentCounts[p.id] || 0}
-                isCommentsOpen={openComments[p.id] || false} tags={postTags[p.id] || []} commentVotes={commentVotes}
+                isCommentsOpen={openComments[p.id] || false} tags={postTags[p.id] || []} commentVotes={commentVotes} postVotes={allPostVotes.filter(v => v.post_id === p.id)}
                 onVote={handleVote} onCommentVote={handleCommentVote} onOpenProfile={setModalProfile}
                 onToggleComments={handleToggleComments} onComment={handleComment} />
             ))
