@@ -463,6 +463,8 @@ export default function Home() {
     if (data) {
       setComments(c => ({ ...c, [postId]: [...(c[postId] || []), data] }))
       setCommentCounts(c => ({ ...c, [postId]: (c[postId] || 0) + 1 }))
+      // Re-read from the database so the open thread always matches the server.
+      setTimeout(() => loadCommentsForPost(postId), 0)
       return true
     }
     return false
@@ -477,21 +479,23 @@ export default function Home() {
     await loadAll(profile.id)
   }
 
+  const loadCommentsForPost = async (postId: number) => {
+    const { data, error } = await supabase.from('comments').select('*').eq('post_id', postId).order('created_at', { ascending: true })
+    if (error) { notify(`Could not load comments: ${error.message}`, 'neg'); return }
+    const rows = data || []
+    setComments(c => ({ ...c, [postId]: rows }))
+    setCommentCounts(c => ({ ...c, [postId]: rows.length }))
+    const ids = rows.map((x: any) => x.id)
+    if (ids.length) {
+      const { data: votes } = await supabase.from('comment_votes').select('comment_id,value').eq('voter_id', profile!.id).in('comment_id', ids)
+      if (votes) setCommentVotes(v => ({ ...v, ...Object.fromEntries(votes.map((x: any) => [x.comment_id, x.value])) }))
+    }
+  }
+
   const handleToggleComments = async (postId: number) => {
     const nowOpen = !openComments[postId]
     setOpenComments(o => ({ ...o, [postId]: nowOpen }))
-    if (nowOpen && !comments[postId]) {
-      const { data, error } = await supabase.from('comments').select('*').eq('post_id', postId).order('created_at', { ascending: true })
-      if (error) { notify(`Could not load comments: ${error.message}`, 'neg'); return }
-      if (data) {
-        setComments(c => ({ ...c, [postId]: data }))
-        const ids = data.map((x: any) => x.id)
-        if (ids.length) {
-          const { data: votes } = await supabase.from('comment_votes').select('comment_id,value').eq('voter_id', profile!.id).in('comment_id', ids)
-          if (votes) setCommentVotes(v => ({ ...v, ...Object.fromEntries(votes.map((x: any) => [x.comment_id, x.value])) }))
-        }
-      }
-    }
+    if (nowOpen) await loadCommentsForPost(postId)
   }
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
