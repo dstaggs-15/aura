@@ -651,6 +651,11 @@ export default function Home() {
             </div>
             <div style={{ padding: '0 20px 24px', marginTop: -22 }}>
               <Av p={modalProfile} size={54} />
+              <ProfileStyleShowcase
+                p={modalProfile}
+                pinnedPost={posts.find(x => x.id === modalProfile.pinned_post_id && x.user_id === modalProfile.id)}
+                badges={(modalProfile.showcased_badges && modalProfile.showcased_badges.length) ? modalProfile.showcased_badges.filter((b: string) => getBadges(modalProfile).includes(b)) : getBadges(modalProfile).slice(0, 3)}
+              />
               <div style={{ marginTop: 10, marginBottom: 2, fontWeight: 700, fontSize: 20, color: S.text }}>
                 {modalProfile.username} {clownCount(modalProfile.aura) > 0 && '🤡'.repeat(clownCount(modalProfile.aura))}
               </div>
