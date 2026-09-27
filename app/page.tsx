@@ -298,6 +298,7 @@ export default function Home() {
   const [openComments, setOpenComments] = useState<Record<number, boolean>>({})
   const [ledger, setLedger] = useState<LedgerEntry[]>([])
   const [showLedger, setShowLedger] = useState(false)
+  const [showCustomize, setShowCustomize] = useState(false)
   const [friendships, setFriendships] = useState<Friendship[]>([])
   const [pushEnabled, setPushEnabled] = useState(false)
   const [pushBusy, setPushBusy] = useState(false)
@@ -1047,6 +1048,13 @@ export default function Home() {
             </div>
           </Card>
 
+          <div style={{ marginBottom: 10 }}>
+            <button onClick={() => setShowCustomize(v => !v)} style={{ width: '100%', padding: '10px 14px', borderRadius: 12, border: `1px solid ${profileAccent(profile)}66`, background: showCustomize ? profileCard2(profile) : 'transparent', color: profileAccent(profile), fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+              🎨 {showCustomize ? 'Hide customization' : 'Customize'}
+            </button>
+          </div>
+
+          {showCustomize && (
           <Card style={{ padding: 18, marginBottom: 10, background: profileCard(profile), border: `1px solid ${profileAccent(profile)}55` }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: profileAccent(profile), textTransform: 'uppercase', letterSpacing: 1, marginBottom: 14 }}>🎨 Customize profile</div>
 
@@ -1091,6 +1099,7 @@ export default function Home() {
               ))}
             </div>
           </Card>
+          )}
 
           {showLedger && (
             <Card style={{ padding: 20, marginBottom: 10 }}>
