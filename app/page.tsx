@@ -553,7 +553,7 @@ export default function Home() {
     notify('Bio saved', 'pos')
   }
 
-  const saveCustomization = async (patch: Partial<Profile>, success = 'Profile updated') => {
+  const saveCustomization = async (patch: any, success = 'Profile updated') => {
     if (!profile) return
     const { error } = await supabase.from('profiles').update(patch).eq('id', profile.id)
     if (error) { notify(error.message, 'neg'); return }
@@ -1044,7 +1044,7 @@ export default function Home() {
 
             <div style={{ fontSize: 11, color: S.text3, marginBottom: 7 }}>Theme</div>
             <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 15 }}>
-              {Object.entries(PROFILE_THEMES).map(([key,t]) => <button key={key} onClick={() => saveCustomization({ profile_theme: key as Profile['profile_theme'] }, 'Theme updated')} style={{ padding: '7px 10px', borderRadius: 9, border: `1px solid ${profile.profile_theme === key ? profileAccent(profile) : S.border2}`, background: profile.profile_theme === key ? profileTheme(profile).card2 : 'transparent', color: profile.profile_theme === key ? profileAccent(profile) : S.text2, cursor: 'pointer', fontSize: 12 }}>{t.label}</button>)}
+              {Object.entries(PROFILE_THEMES).map(([key,t]) => <button key={key} onClick={() => saveCustomization({ profile_theme: key as any }, 'Theme updated')} style={{ padding: '7px 10px', borderRadius: 9, border: `1px solid ${profile.profile_theme === key ? profileAccent(profile) : S.border2}`, background: profile.profile_theme === key ? profileTheme(profile).card2 : 'transparent', color: profile.profile_theme === key ? profileAccent(profile) : S.text2, cursor: 'pointer', fontSize: 12 }}>{t.label}</button>)}
             </div>
 
             <div style={{ fontSize: 11, color: S.text3, marginBottom: 7 }}>Custom title</div>
@@ -1069,7 +1069,7 @@ export default function Home() {
 
             <div style={{ fontSize: 11, color: S.text3, marginBottom: 7 }}>Profile layout</div>
             <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-              {[['classic','Classic'],['compact','Compact'],['cards','Card-heavy'],['banner','Banner-focused']].map(([key,label]) => <button key={key} onClick={() => saveCustomization({ profile_layout: key as Profile['profile_layout'] }, 'Layout updated')} style={{ padding: '7px 10px', borderRadius: 9, border: `1px solid ${profile.profile_layout === key ? profileAccent(profile) : S.border2}`, background: profile.profile_layout === key ? profileTheme(profile).card2 : 'transparent', color: profile.profile_layout === key ? profileAccent(profile) : S.text2, cursor: 'pointer', fontSize: 12 }}>{label}</button>)}
+              {[['classic','Classic'],['compact','Compact'],['cards','Card-heavy'],['banner','Banner-focused']].map(([key,label]) => <button key={key} onClick={() => saveCustomization({ profile_layout: key as any }, 'Layout updated')} style={{ padding: '7px 10px', borderRadius: 9, border: `1px solid ${profile.profile_layout === key ? profileAccent(profile) : S.border2}`, background: profile.profile_layout === key ? profileTheme(profile).card2 : 'transparent', color: profile.profile_layout === key ? profileAccent(profile) : S.text2, cursor: 'pointer', fontSize: 12 }}>{label}</button>)}
             </div>
           </Card>
 
