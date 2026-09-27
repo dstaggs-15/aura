@@ -332,7 +332,7 @@ export default function Home() {
       { data: counts }, { data: tags }, { data: pvs }, { data: friendshipRows }, { data: allVotes },
     ] = await Promise.all([
       supabase.from('profiles').select('*'),
-      supabase.from('posts').select('*, profiles(*)').order('created_at', { ascending: false }),
+      supabase.from('posts').select('*').order('created_at', { ascending: false }),
       supabase.from('tax_bucket').select('*').single(),
       supabase.from('votes').select('*').eq('voter_id', uid),
       supabase.from('post_comment_counts').select('*'),
