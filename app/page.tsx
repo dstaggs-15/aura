@@ -469,7 +469,8 @@ export default function Home() {
       const { data: urlData } = supabase.storage.from('posts').getPublicUrl(path)
       image_url = urlData.publicUrl
     }
-    const { data } = await supabase.from('posts').insert({ user_id: profile.id, text: draftRef.current.trim(), aura: 0, image_url }).select('*, profiles(*)').single()
+    const { data, error: postError } = await supabase.from('posts').insert({ user_id: profile.id, text: draftRef.current.trim(), aura: 0, image_url }).select('*').single()
+    if (postError) { notify(`Could not post: ${postError.message}`, 'neg'); setPosting(false); return }
     if (data) {
       if (selectedTags.length > 0) {
         await supabase.from('post_tags').insert(selectedTags.map(uid => ({ post_id: data.id, tagged_user_id: uid })))
