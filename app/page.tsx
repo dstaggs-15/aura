@@ -64,6 +64,26 @@ const Card = ({ children, style = {}, ...props }: any) => (
   <div {...props} style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 16, ...style }}>{children}</div>
 )
 
+const ProfileStyleShowcase = ({ p, pinnedPost, badges }: { p: any; pinnedPost: any; badges: string[] }) => {
+  const accent = profileAccent(p)
+  const compact = p?.profile_layout === 'compact'
+  const cards = p?.profile_layout === 'cards'
+  const banner = p?.profile_layout === 'banner'
+  return (
+    <div style={{ background: profileCard(p), border: `1px solid ${accent}66`, borderRadius: 14, padding: compact ? 10 : 14, margin: '10px 0 14px' }}>
+      <div style={{ height: banner ? 56 : 5, borderRadius: 8, marginBottom: compact ? 8 : 11, background: `linear-gradient(90deg,${accent},${profileCard2(p)})` }} />
+      {p?.custom_title && <div style={{ color: accent, fontSize: compact ? 11 : 13, fontWeight: 700, marginBottom: 8 }}>{p.custom_title}</div>}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: pinnedPost ? 10 : 0 }}>
+        {badges.slice(0, 3).map(b => <span key={b} style={{ fontSize: 10, padding: '4px 8px', borderRadius: cards ? 7 : 20, background: profileCard2(p), border: `1px solid ${accent}55`, color: S.text2 }}>{b}</span>)}
+      </div>
+      {pinnedPost && <div style={{ background: profileCard2(p), borderRadius: 10, padding: compact ? 8 : 11, border: `1px solid ${accent}33` }}>
+        <div style={{ color: accent, fontSize: 10, fontWeight: 700, marginBottom: 5 }}>📌 PINNED POST</div>
+        <div style={{ fontSize: compact ? 11 : 12, color: S.text, lineHeight: 1.4 }}>{pinnedPost.text}</div>
+      </div>}
+    </div>
+  )
+}
+
 const CommentInput = memo(({ postId, profile, profiles, onSubmit }: {
   postId: number; profile: any; profiles: any[]; onSubmit: (postId: number, text: string) => Promise<boolean>
 }) => {
