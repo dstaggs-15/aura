@@ -539,7 +539,8 @@ export default function Home() {
     const path = `${profile.id}.${ext}`
     await supabase.storage.from('avatars').upload(path, file, { upsert: true })
     const { data } = supabase.storage.from('avatars').getPublicUrl(path)
-    await supabase.from('profiles').update({ avatar_url: data.publicUrl }).eq('id', profile.id)
+    const { error: profileError } = await supabase.rpc('update_my_profile', { p_patch: { avatar_url: data.publicUrl } })
+    if (profileError) { notify(profileError.message, 'neg'); return }
     setProfile(p => p ? { ...p, avatar_url: data.publicUrl } : p)
     setProfiles(ps => ps.map(p => p.id === profile.id ? { ...p, avatar_url: data.publicUrl } : p))
     notify('Photo updated', 'pos')
@@ -554,7 +555,7 @@ export default function Home() {
     if (uploadError) { notify(uploadError.message, 'neg'); return }
     const { data } = supabase.storage.from('avatars').getPublicUrl(path)
     const bannerUrl = `${data.publicUrl}?v=${Date.now()}`
-    const { error: updateError } = await supabase.from('profiles').update({ banner_url: bannerUrl }).eq('id', profile.id)
+    const { error: updateError } = await supabase.rpc('update_my_profile', { p_patch: { banner_url: bannerUrl } })
     if (updateError) { notify(updateError.message, 'neg'); return }
     setProfile(p => p ? { ...p, banner_url: bannerUrl } : p)
     setProfiles(ps => ps.map(p => p.id === profile.id ? { ...p, banner_url: bannerUrl } : p))
@@ -564,7 +565,8 @@ export default function Home() {
   const handleSaveBio = async () => {
     if (!profile) return
     const bio = bioRef.current
-    await supabase.from('profiles').update({ bio }).eq('id', profile.id)
+    const { error } = await supabase.rpc('update_my_profile', { p_patch: { bio } })
+    if (error) { notify(error.message, 'neg'); return }
     setProfile(p => p ? { ...p, bio } : p)
     setProfiles(ps => ps.map(p => p.id === profile.id ? { ...p, bio } : p))
     setEditingBio(false)
@@ -573,7 +575,7 @@ export default function Home() {
 
   const saveProfileCustomization = async (patch: any, message = 'Profile updated') => {
     if (!profile) return
-    const { error } = await supabase.from('profiles').update(patch).eq('id', profile.id)
+    const { error } = await supabase.rpc('update_my_profile', { p_patch: patch })
     if (error) { notify(error.message, 'neg'); return }
     setProfile(p => p ? { ...p, ...patch } : p)
     setProfiles(ps => ps.map(p => p.id === profile.id ? { ...p, ...patch } : p))
