@@ -981,6 +981,11 @@ export default function Home() {
                   ✏️<input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarUpload} />
                 </label>
               </div>
+              <ProfileStyleShowcase
+                p={profile}
+                pinnedPost={posts.find(x => x.id === profile.pinned_post_id && x.user_id === profile.id)}
+                badges={(profile.showcased_badges && profile.showcased_badges.length) ? profile.showcased_badges.filter((b: string) => getBadges(profile).includes(b)) : getBadges(profile).slice(0, 3)}
+              />
               <div style={{ fontWeight: 700, fontSize: 20, color: S.text, marginBottom: 4 }}>
                 {profile.username} {clownCount(profile.aura) > 0 && '🤡'.repeat(clownCount(profile.aura))}
               </div>
