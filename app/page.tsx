@@ -1014,6 +1014,51 @@ export default function Home() {
             </div>
           </Card>
 
+          <Card style={{ padding: 18, marginBottom: 10, background: profileCard(profile), border: `1px solid ${profileAccent(profile)}55` }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: profileAccent(profile), textTransform: 'uppercase', letterSpacing: 1, marginBottom: 14 }}>🎨 Customize profile</div>
+
+            <div style={{ fontSize: 11, color: S.text3, marginBottom: 7 }}>Accent color</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 15 }}>
+              {['#3b82f6','#a855f7','#22c55e','#f97316','#ef4444','#06b6d4','#eab308','#ec4899'].map(color => (
+                <button key={color} onClick={() => saveProfileCustomization({ accent_color: color }, 'Accent updated')} style={{ width: 28, height: 28, borderRadius: '50%', background: color, border: profile.accent_color === color ? '3px solid white' : '2px solid #444', cursor: 'pointer' }} />
+              ))}
+            </div>
+
+            <div style={{ fontSize: 11, color: S.text3, marginBottom: 7 }}>Theme</div>
+            <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 15 }}>
+              {['clean','neon','retro','clown','fire','darkblue'].map(theme => (
+                <button key={theme} onClick={() => saveProfileCustomization({ profile_theme: theme }, 'Theme updated')} style={{ padding: '7px 10px', borderRadius: 9, border: `1px solid ${profile.profile_theme === theme ? profileAccent(profile) : S.border2}`, background: profile.profile_theme === theme ? profileCard2(profile) : 'transparent', color: profile.profile_theme === theme ? profileAccent(profile) : S.text2, cursor: 'pointer' }}>{theme}</button>
+              ))}
+            </div>
+
+            <div style={{ fontSize: 11, color: S.text3, marginBottom: 7 }}>Custom title</div>
+            <div style={{ display: 'flex', gap: 7, marginBottom: 15 }}>
+              <input defaultValue={profile.custom_title || ''} onChange={e => { titleRef.current = e.target.value }} maxLength={40} placeholder="Certified Glazer" style={{ flex: 1, minWidth: 0, padding: '9px 11px', borderRadius: 9, border: `1px solid ${S.border2}`, background: profileCard2(profile), color: S.text, fontSize: 16 }} />
+              <button onClick={() => saveProfileCustomization({ custom_title: titleRef.current.trim() || null }, 'Title updated')} style={{ padding: '8px 12px', borderRadius: 9, border: 'none', background: profileAccent(profile), color: '#fff', cursor: 'pointer', fontWeight: 600 }}>Save</button>
+            </div>
+
+            <div style={{ fontSize: 11, color: S.text3, marginBottom: 7 }}>Pinned post</div>
+            <select value={profile.pinned_post_id || ''} onChange={e => saveProfileCustomization({ pinned_post_id: e.target.value ? Number(e.target.value) : null }, 'Pinned post updated')} style={{ width: '100%', padding: '9px 11px', borderRadius: 9, border: `1px solid ${S.border2}`, background: profileCard2(profile), color: S.text, fontSize: 16, marginBottom: 15 }}>
+              <option value="">No pinned post</option>
+              {posts.filter(p => p.user_id === profile.id).map(p => <option key={p.id} value={p.id}>{p.text.slice(0,50)}</option>)}
+            </select>
+
+            <div style={{ fontSize: 11, color: S.text3, marginBottom: 7 }}>Badge showcase — choose up to 3</div>
+            <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 15 }}>
+              {getBadges(profile).map(b => {
+                const active = (profile.showcased_badges || []).includes(b)
+                return <button key={b} onClick={() => toggleBadgeShowcase(b)} style={{ padding: '6px 10px', borderRadius: 20, border: `1px solid ${active ? profileAccent(profile) : S.border2}`, background: active ? profileCard2(profile) : 'transparent', color: active ? profileAccent(profile) : S.text2, cursor: 'pointer' }}>{b}</button>
+              })}
+            </div>
+
+            <div style={{ fontSize: 11, color: S.text3, marginBottom: 7 }}>Profile layout</div>
+            <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+              {['classic','compact','cards','banner'].map(layout => (
+                <button key={layout} onClick={() => saveProfileCustomization({ profile_layout: layout }, 'Layout updated')} style={{ padding: '7px 10px', borderRadius: 9, border: `1px solid ${profile.profile_layout === layout ? profileAccent(profile) : S.border2}`, background: profile.profile_layout === layout ? profileCard2(profile) : 'transparent', color: profile.profile_layout === layout ? profileAccent(profile) : S.text2, cursor: 'pointer' }}>{layout}</button>
+              ))}
+            </div>
+          </Card>
+
           {showLedger && (
             <Card style={{ padding: 20, marginBottom: 10 }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: S.text3, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 14 }}>Aura Ledger</div>
