@@ -34,6 +34,18 @@ const S = {
   red: '#ef4444', redDim: '#3b1515', fire: '#f97316',
 }
 
+const PROFILE_THEME_CARDS: any = {
+  clean: ['#161616','#1e1e1e'],
+  neon: ['#101317','#151b22'],
+  retro: ['#201a17','#2b211c'],
+  clown: ['#1e1216','#2b171d'],
+  fire: ['#1d1510','#2a1b12'],
+  darkblue: ['#101722','#151f2e'],
+}
+const profileAccent = (p: any) => p?.accent_color || S.blue
+const profileCard = (p: any) => (PROFILE_THEME_CARDS[p?.profile_theme] || PROFILE_THEME_CARDS.clean)[0]
+const profileCard2 = (p: any) => (PROFILE_THEME_CARDS[p?.profile_theme] || PROFILE_THEME_CARDS.clean)[1]
+
 const Av = ({ p, size = 36 }: { p: any; size?: number }) => (
   <div style={{
     width: size, height: size, borderRadius: '50%', flexShrink: 0,
@@ -275,6 +287,7 @@ export default function Home() {
   const bannerRef = useRef<HTMLInputElement>(null)
   const draftRef = useRef<string>('')
   const bioRef = useRef<string>('')
+  const titleRef = useRef<string>('')
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -535,6 +548,23 @@ export default function Home() {
     setProfiles(ps => ps.map(p => p.id === profile.id ? { ...p, bio } : p))
     setEditingBio(false)
     notify('Bio saved', 'pos')
+  }
+
+  const saveProfileCustomization = async (patch: any, message = 'Profile updated') => {
+    if (!profile) return
+    const { error } = await supabase.from('profiles').update(patch).eq('id', profile.id)
+    if (error) { notify(error.message, 'neg'); return }
+    setProfile(p => p ? { ...p, ...patch } : p)
+    setProfiles(ps => ps.map(p => p.id === profile.id ? { ...p, ...patch } : p))
+    notify(message, 'pos')
+  }
+
+  const toggleBadgeShowcase = async (badge: string) => {
+    if (!profile) return
+    const current = profile.showcased_badges || []
+    let next = current.includes(badge) ? current.filter((x: string) => x !== badge) : [...current, badge]
+    if (next.length > 3) next = next.slice(next.length - 3)
+    await saveProfileCustomization({ showcased_badges: next }, 'Badge showcase updated')
   }
 
   const loadLedger = async () => {
