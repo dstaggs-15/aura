@@ -34,21 +34,6 @@ const S = {
   red: '#ef4444', redDim: '#3b1515', fire: '#f97316',
 }
 
-const PROFILE_THEMES: Record<string, { label: string; card: string; card2: string; border: string; banner: string; shadow?: string }> = {
-  clean: { label: 'Clean', card: '#161616', card2: '#1e1e1e', border: '#2a2a2a', banner: 'linear-gradient(135deg,#1e3a5f,#161616)' },
-  neon: { label: 'Neon', card: '#101317', card2: '#151b22', border: '#24445c', banner: 'linear-gradient(135deg,#10273a,#25113b)', shadow: '0 0 24px rgba(59,130,246,.16)' },
-  retro: { label: 'Retro', card: '#201a17', card2: '#2b211c', border: '#5a4335', banner: 'linear-gradient(135deg,#7a4527,#32231b)' },
-  clown: { label: 'Clown', card: '#1e1216', card2: '#2b171d', border: '#65303f', banner: 'repeating-linear-gradient(45deg,#7f1d1d 0,#7f1d1d 12px,#111 12px,#111 24px)' },
-  fire: { label: 'Fire', card: '#1d1510', card2: '#2a1b12', border: '#63361d', banner: 'linear-gradient(135deg,#7c2d12,#f97316 55%,#2a140d)' },
-  darkblue: { label: 'Dark Blue', card: '#101722', card2: '#151f2e', border: '#273b57', banner: 'linear-gradient(135deg,#0f2747,#172033)' },
-}
-const profileTheme = (p: any) => PROFILE_THEMES[p?.profile_theme] || PROFILE_THEMES.clean
-const profileAccent = (p: any) => p?.accent_color || S.blue
-const displayedBadges = (p: any, earned: string[]) => {
-  const chosen = Array.isArray(p?.showcased_badges) ? p.showcased_badges.filter((b: string) => earned.includes(b)).slice(0, 3) : []
-  return chosen.length ? chosen : earned.slice(0, 3)
-}
-
 const Av = ({ p, size = 36 }: { p: any; size?: number }) => (
   <div style={{
     width: size, height: size, borderRadius: '50%', flexShrink: 0,
@@ -290,7 +275,6 @@ export default function Home() {
   const bannerRef = useRef<HTMLInputElement>(null)
   const draftRef = useRef<string>('')
   const bioRef = useRef<string>('')
-  const titleRef = useRef<string>('')
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -553,23 +537,6 @@ export default function Home() {
     notify('Bio saved', 'pos')
   }
 
-  const saveCustomization = async (patch: any, success = 'Profile updated') => {
-    if (!profile) return
-    const { error } = await supabase.from('profiles').update(patch).eq('id', profile.id)
-    if (error) { notify(error.message, 'neg'); return }
-    setProfile(p => p ? { ...p, ...patch } : p)
-    setProfiles(ps => ps.map(p => p.id === profile.id ? { ...p, ...patch } : p))
-    setModalProfile(m => m?.id === profile.id ? { ...m, ...patch } : m)
-    notify(success, 'pos')
-  }
-
-  const toggleShowcaseBadge = async (badge: string) => {
-    if (!profile) return
-    const current = profile.showcased_badges || []
-    const next = current.includes(badge) ? current.filter(b => b !== badge) : [...current, badge].slice(-3)
-    await saveCustomization({ showcased_badges: next }, 'Badge showcase updated')
-  }
-
   const loadLedger = async () => {
     if (!profile) return
     const { data } = await supabase.from('aura_ledger').select('*').eq('user_id', profile.id).order('created_at', { ascending: false }).limit(50)
@@ -628,16 +595,15 @@ export default function Home() {
       {modalProfile && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, backdropFilter: 'blur(4px)' }}
           onClick={() => { setModalProfile(null); setEditingBio(false) }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: profileTheme(modalProfile).card, border: `1px solid ${profileAccent(modalProfile)}55`, borderRadius: 20, width: '100%', maxWidth: 440, maxHeight: '88vh', overflowY: 'auto', boxShadow: profileTheme(modalProfile).shadow }}>
-            <div style={{ height: modalProfile.profile_layout === 'banner' ? 150 : modalProfile.profile_layout === 'compact' ? 64 : 90, background: profileTheme(modalProfile).banner, backgroundImage: modalProfile.banner_url ? `url(${modalProfile.banner_url})` : profileTheme(modalProfile).banner, backgroundSize: 'cover', backgroundPosition: 'center', borderRadius: '20px 20px 0 0', position: 'relative' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 20, width: '100%', maxWidth: 440, maxHeight: '88vh', overflowY: 'auto' }}>
+            <div style={{ height: 90, background: clownCount(modalProfile.aura) > 0 ? `repeating-linear-gradient(45deg,${S.redDim} 0,${S.redDim} 12px,${S.card} 12px,${S.card} 24px)` : `linear-gradient(135deg, ${S.blueDim}, ${S.card})`, backgroundImage: modalProfile.banner_url ? `url(${modalProfile.banner_url})` : undefined, backgroundSize: 'cover', backgroundPosition: 'center', borderRadius: '20px 20px 0 0', position: 'relative' }}>
               <button onClick={() => setModalProfile(null)} style={{ position: 'absolute', top: 12, right: 12, width: 30, height: 30, borderRadius: '50%', background: 'rgba(0,0,0,.5)', border: `1px solid ${S.border2}`, cursor: 'pointer', fontSize: 14, color: '#fff' }}>✕</button>
             </div>
             <div style={{ padding: '0 20px 24px', marginTop: -22 }}>
               <Av p={modalProfile} size={54} />
-              <div style={{ marginTop: 10, marginBottom: 2, fontWeight: 700, fontSize: 20, color: profileAccent(modalProfile) }}>
+              <div style={{ marginTop: 10, marginBottom: 2, fontWeight: 700, fontSize: 20, color: S.text }}>
                 {modalProfile.username} {clownCount(modalProfile.aura) > 0 && '🤡'.repeat(clownCount(modalProfile.aura))}
               </div>
-              {modalProfile.custom_title && <div style={{ fontSize: 12, color: S.text2, fontWeight: 600, marginBottom: 7 }}>{modalProfile.custom_title}</div>}
               {modalProfile.bio && <p style={{ fontSize: 13, color: S.text2, marginBottom: 14, lineHeight: 1.55 }}>{modalProfile.bio}</p>}
               <div style={{ display: 'flex', gap: 24, margin: '14px 0' }}>
                 {[
@@ -679,18 +645,10 @@ export default function Home() {
                 </div>
               )}
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 18 }}>
-                {displayedBadges(modalProfile, getBadges(modalProfile)).map(b => (
-                  <span key={b} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 20, background: profileTheme(modalProfile).card2, border: `1px solid ${profileAccent(modalProfile)}55`, color: S.text2 }}>{b}</span>
+                {getBadges(modalProfile).map(b => (
+                  <span key={b} style={{ fontSize: 11, padding: '3px 10px', borderRadius: 20, background: S.card2, border: `1px solid ${S.border2}`, color: S.text2 }}>{b}</span>
                 ))}
               </div>
-              {modalProfile.pinned_post_id && (() => {
-                const pinned = posts.find(p => p.id === modalProfile.pinned_post_id && p.user_id === modalProfile.id)
-                return pinned ? <div style={{ marginBottom: 18, padding: 12, borderRadius: 12, background: profileTheme(modalProfile).card2, border: `1px solid ${profileAccent(modalProfile)}55` }}>
-                  <div style={{ fontSize: 10, color: profileAccent(modalProfile), textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>📌 Pinned post</div>
-                  <div style={{ fontSize: 13, color: S.text, lineHeight: 1.45 }}>{pinned.text}</div>
-                  {pinned.image_url && <img src={pinned.image_url} alt="Pinned post" style={{ width: '100%', maxHeight: 180, objectFit: 'cover', borderRadius: 8, marginTop: 8 }} />}
-                </div> : null
-              })()}
               <div style={{ fontSize: 11, color: S.text3, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>Posts</div>
               {posts.filter(p => p.user_id === modalProfile.id).length === 0 && <p style={{ fontSize: 13, color: S.text3 }}>No posts yet.</p>}
               {posts.filter(p => p.user_id === modalProfile.id).map(p => (
@@ -954,31 +912,30 @@ export default function Home() {
         </>}
 
         {tab === 'profile' && <>
-          <Card style={{ overflow: 'hidden', marginBottom: 10, background: profileTheme(profile).card, border: `1px solid ${profileAccent(profile)}55`, boxShadow: profileTheme(profile).shadow }}>
-            <div style={{ height: profile.profile_layout === 'banner' ? 180 : profile.profile_layout === 'compact' ? 80 : 120, background: profileTheme(profile).banner, backgroundImage: profile.banner_url ? `url(${profile.banner_url})` : profileTheme(profile).banner, backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative' }}>
-              <label style={{ position: 'absolute', bottom: 10, right: 10, cursor: 'pointer', background: 'rgba(0,0,0,.6)', border: `1px solid ${profileAccent(profile)}88`, borderRadius: 8, padding: '5px 12px', fontSize: 12, color: '#fff', display: 'flex', alignItems: 'center', gap: 5 }}>
+          <Card style={{ overflow: 'hidden', marginBottom: 10 }}>
+            <div style={{ height: 120, background: clownCount(profile.aura) > 0 ? `repeating-linear-gradient(45deg,${S.redDim} 0,${S.redDim} 12px,${S.card} 12px,${S.card} 24px)` : `linear-gradient(135deg, ${S.blueDim}, ${S.card})`, backgroundImage: profile.banner_url ? `url(${profile.banner_url})` : undefined, backgroundSize: 'cover', backgroundPosition: 'center', position: 'relative' }}>
+              <label style={{ position: 'absolute', bottom: 10, right: 10, cursor: 'pointer', background: 'rgba(0,0,0,.6)', border: `1px solid ${S.border2}`, borderRadius: 8, padding: '5px 12px', fontSize: 12, color: '#fff', display: 'flex', alignItems: 'center', gap: 5 }}>
                 📷 Edit banner
                 <input ref={bannerRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleBannerUpload} />
               </label>
             </div>
-            <div style={{ padding: profile.profile_layout === 'compact' ? '0 14px 16px' : '0 18px 22px', marginTop: -26 }}>
+            <div style={{ padding: '0 18px 22px', marginTop: -26 }}>
               <div style={{ position: 'relative', display: 'inline-block', marginBottom: 12 }}>
                 <Av p={profile} size={56} />
-                <label style={{ position: 'absolute', bottom: 0, right: -3, width: 22, height: 22, borderRadius: '50%', background: profileTheme(profile).card2, border: `1px solid ${profileAccent(profile)}88`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, cursor: 'pointer' }}>
+                <label style={{ position: 'absolute', bottom: 0, right: -3, width: 22, height: 22, borderRadius: '50%', background: S.card2, border: `1px solid ${S.border2}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, cursor: 'pointer' }}>
                   ✏️<input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarUpload} />
                 </label>
               </div>
-              <div style={{ fontWeight: 700, fontSize: 20, color: profileAccent(profile), marginBottom: 3 }}>
+              <div style={{ fontWeight: 700, fontSize: 20, color: S.text, marginBottom: 4 }}>
                 {profile.username} {clownCount(profile.aura) > 0 && '🤡'.repeat(clownCount(profile.aura))}
               </div>
-              {profile.custom_title && <div style={{ fontSize: 12, color: S.text2, fontWeight: 600, marginBottom: 6 }}>{profile.custom_title}</div>}
               <div style={{ margin: '10px 0 16px' }}>
                 {editingBio ? (
                   <div>
                     <textarea defaultValue={profile.bio || ''} onChange={e => { bioRef.current = e.target.value }} placeholder="say something..." rows={2} dir="ltr"
-                      style={{ width: '100%', border: `1px solid ${profileAccent(profile)}66`, borderRadius: 10, padding: '9px 12px', fontSize: 16, background: profileTheme(profile).card2, color: S.text, lineHeight: 1.55, resize: 'none', fontFamily: 'inherit', outline: 'none', direction: 'ltr', textAlign: 'left' } as any} />
+                      style={{ width: '100%', border: `1px solid ${S.border2}`, borderRadius: 10, padding: '9px 12px', fontSize: 14, background: S.card2, color: S.text, lineHeight: 1.55, resize: 'none', fontFamily: 'inherit', outline: 'none', direction: 'ltr', textAlign: 'left' } as any} />
                     <div style={{ display: 'flex', gap: 7, marginTop: 8 }}>
-                      <button onClick={handleSaveBio} style={{ padding: '6px 16px', borderRadius: 9, fontSize: 12, fontWeight: 600, background: profileAccent(profile), color: '#fff', border: 'none', cursor: 'pointer' }}>Save</button>
+                      <button onClick={handleSaveBio} style={{ padding: '6px 16px', borderRadius: 9, fontSize: 12, fontWeight: 600, background: S.blue, color: '#fff', border: 'none', cursor: 'pointer' }}>Save</button>
                       <button onClick={() => setEditingBio(false)} style={{ padding: '6px 16px', borderRadius: 9, fontSize: 12, border: `1px solid ${S.border2}`, background: 'transparent', color: S.text2, cursor: 'pointer' }}>Cancel</button>
                     </div>
                   </div>
@@ -989,87 +946,41 @@ export default function Home() {
                   </div>
                 )}
               </div>
-              <div style={{ display: 'flex', gap: profile.profile_layout === 'compact' ? 12 : 20, marginBottom: 16, flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: 20, marginBottom: 16, flexWrap: 'wrap' }}>
                 {[
-                  { label: 'Aura', val: fmtAura(profile.aura), color: profile.aura >= 0 ? profileAccent(profile) : S.red },
+                  { label: 'Aura', val: fmtAura(profile.aura), color: profile.aura >= 0 ? S.blue : S.red },
                   { label: 'All-time', val: fmtAura(profile.aura_all_time || 0), color: S.fire },
                   { label: 'Streak', val: `🔥${profile.streak}`, color: S.text },
                   { label: 'Posts', val: posts.filter(p => p.user_id === profile.id).length, color: S.text },
                 ].map(s => (
-                  <div key={s.label} style={profile.profile_layout === 'cards' ? { background: profileTheme(profile).card2, border: `1px solid ${profileAccent(profile)}44`, borderRadius: 10, padding: '8px 12px' } : undefined}>
+                  <div key={s.label}>
                     <div style={{ fontFamily: 'monospace', fontSize: 20, fontWeight: 700, color: s.color }}>{s.val}</div>
                     <div style={{ fontSize: 11, color: S.text3, marginTop: 2 }}>{s.label}</div>
                   </div>
                 ))}
               </div>
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
-                {displayedBadges(profile, getBadges(profile)).map(b => (
-                  <span key={b} style={{ fontSize: 11, padding: '4px 11px', borderRadius: 20, background: profileTheme(profile).card2, border: `1px solid ${profileAccent(profile)}55`, color: S.text2 }}>{b}</span>
+                {getBadges(profile).map(b => (
+                  <span key={b} style={{ fontSize: 11, padding: '4px 11px', borderRadius: 20, background: S.card2, border: `1px solid ${S.border2}`, color: S.text2 }}>{b}</span>
                 ))}
               </div>
-              {profile.pinned_post_id && (() => {
-                const pinned = posts.find(p => p.id === profile.pinned_post_id && p.user_id === profile.id)
-                return pinned ? <div style={{ marginBottom: 16, padding: 12, borderRadius: 12, background: profileTheme(profile).card2, border: `1px solid ${profileAccent(profile)}55` }}>
-                  <div style={{ fontSize: 10, color: profileAccent(profile), textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>📌 Pinned post</div>
-                  <div style={{ fontSize: 13, color: S.text, lineHeight: 1.45 }}>{pinned.text}</div>
-                  {pinned.image_url && <img src={pinned.image_url} alt="Pinned post" style={{ width: '100%', maxHeight: 220, objectFit: 'cover', borderRadius: 8, marginTop: 8 }} />}
-                </div> : null
-              })()}
               {profile.aura < 0 && (
                 <div style={{ background: S.redDim, border: `1px solid ${S.red}`, borderRadius: 12, padding: 14, marginBottom: 14 }}>
                   <div style={{ fontWeight: 700, fontSize: 13, color: '#fff', marginBottom: 6 }}>🤡 {clownTitle(profile.aura)} mode</div>
                   <div style={{ fontSize: 12, color: '#f3b5b5', marginBottom: 8 }}>{Math.abs(profile.aura).toFixed(1)} aura until you escape. Negative users get a +7 check-in comeback reward; higher clown tiers pay more tax on positive gains.</div>
+                  <div style={{ height: 6, background: '#260d0d', borderRadius: 99, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${Math.max(4, Math.min(100, 100 - Math.abs(profile.aura) / 5))}%`, background: S.red }} />
+                  </div>
                 </div>
               )}
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button onClick={enablePushNotifications} disabled={pushBusy || pushEnabled} style={{ padding: '8px 18px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: `1px solid ${pushEnabled ? profileAccent(profile) : S.border2}`, background: pushEnabled ? profileTheme(profile).card2 : 'transparent', color: pushEnabled ? profileAccent(profile) : S.text2, cursor: pushBusy || pushEnabled ? 'default' : 'pointer' }}>
+                <button onClick={enablePushNotifications} disabled={pushBusy || pushEnabled} style={{ padding: '8px 18px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: `1px solid ${pushEnabled ? S.blue : S.border2}`, background: pushEnabled ? S.blueDim : 'transparent', color: pushEnabled ? S.blue : S.text2, cursor: pushBusy || pushEnabled ? 'default' : 'pointer' }}>
                   {pushEnabled ? '🔔 Notifications enabled' : pushBusy ? 'Enabling...' : '🔔 Enable post notifications'}
                 </button>
-                <button onClick={() => { setShowLedger(!showLedger); if (!showLedger) loadLedger() }} style={{ padding: '8px 18px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: `1px solid ${S.border2}`, background: showLedger ? profileAccent(profile) : 'transparent', color: showLedger ? '#fff' : S.text2, cursor: 'pointer' }}>
+                <button onClick={() => { setShowLedger(!showLedger); if (!showLedger) loadLedger() }} style={{ padding: '8px 18px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: `1px solid ${S.border2}`, background: showLedger ? S.blue : 'transparent', color: showLedger ? '#fff' : S.text2, cursor: 'pointer' }}>
                 📒 {showLedger ? 'Hide Ledger' : 'View Ledger'}
                 </button>
               </div>
-            </div>
-          </Card>
-
-          <Card style={{ padding: 18, marginBottom: 10, background: profileTheme(profile).card, border: `1px solid ${profileAccent(profile)}55` }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: profileAccent(profile), textTransform: 'uppercase', letterSpacing: 1, marginBottom: 14 }}>🎨 Customize profile</div>
-            <div style={{ fontSize: 11, color: S.text3, marginBottom: 7 }}>Accent color</div>
-            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 15 }}>
-              {['#3b82f6','#a855f7','#22c55e','#f97316','#ef4444','#06b6d4','#eab308','#ec4899'].map(color => (
-                <button key={color} onClick={() => saveCustomization({ accent_color: color }, 'Accent color updated')} aria-label={color} style={{ width: 28, height: 28, borderRadius: '50%', background: color, border: profile.accent_color === color ? '3px solid #fff' : '2px solid #444', cursor: 'pointer' }} />
-              ))}
-              <input type="color" value={profile.accent_color || '#3b82f6'} onChange={e => saveCustomization({ accent_color: e.target.value }, 'Accent color updated')} style={{ width: 34, height: 30, border: 'none', background: 'transparent' }} />
-            </div>
-
-            <div style={{ fontSize: 11, color: S.text3, marginBottom: 7 }}>Theme</div>
-            <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 15 }}>
-              {Object.entries(PROFILE_THEMES).map(([key,t]) => <button key={key} onClick={() => saveCustomization({ profile_theme: key as any }, 'Theme updated')} style={{ padding: '7px 10px', borderRadius: 9, border: `1px solid ${profile.profile_theme === key ? profileAccent(profile) : S.border2}`, background: profile.profile_theme === key ? profileTheme(profile).card2 : 'transparent', color: profile.profile_theme === key ? profileAccent(profile) : S.text2, cursor: 'pointer', fontSize: 12 }}>{t.label}</button>)}
-            </div>
-
-            <div style={{ fontSize: 11, color: S.text3, marginBottom: 7 }}>Custom title</div>
-            <div style={{ display: 'flex', gap: 7, marginBottom: 15 }}>
-              <input defaultValue={profile.custom_title || ''} ref={el => { if (el) titleRef.current = el.value }} onChange={e => { titleRef.current = e.target.value }} maxLength={40} placeholder="Aura Merchant" style={{ flex: 1, minWidth: 0, padding: '9px 11px', borderRadius: 9, border: `1px solid ${S.border2}`, background: profileTheme(profile).card2, color: S.text, fontSize: 16, outline: 'none' }} />
-              <button onClick={() => saveCustomization({ custom_title: titleRef.current.trim() || null }, 'Title updated')} style={{ padding: '8px 12px', borderRadius: 9, border: 'none', background: profileAccent(profile), color: '#fff', fontWeight: 600, cursor: 'pointer' }}>Save</button>
-            </div>
-
-            <div style={{ fontSize: 11, color: S.text3, marginBottom: 7 }}>Pinned post</div>
-            <select value={profile.pinned_post_id || ''} onChange={e => saveCustomization({ pinned_post_id: e.target.value ? Number(e.target.value) : null }, e.target.value ? 'Post pinned' : 'Pinned post cleared')} style={{ width: '100%', padding: '9px 11px', borderRadius: 9, border: `1px solid ${S.border2}`, background: profileTheme(profile).card2, color: S.text, fontSize: 16, marginBottom: 15 }}>
-              <option value="">No pinned post</option>
-              {posts.filter(p => p.user_id === profile.id).map(p => <option key={p.id} value={p.id}>{p.text.slice(0,55) || `Post #${p.id}`}</option>)}
-            </select>
-
-            <div style={{ fontSize: 11, color: S.text3, marginBottom: 7 }}>Badge showcase — pick up to 3</div>
-            <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 15 }}>
-              {getBadges(profile).map(b => {
-                const active = (profile.showcased_badges || []).includes(b)
-                return <button key={b} onClick={() => toggleShowcaseBadge(b)} style={{ padding: '6px 10px', borderRadius: 20, border: `1px solid ${active ? profileAccent(profile) : S.border2}`, background: active ? profileTheme(profile).card2 : 'transparent', color: active ? profileAccent(profile) : S.text2, cursor: 'pointer', fontSize: 11 }}>{b}</button>
-              })}
-            </div>
-
-            <div style={{ fontSize: 11, color: S.text3, marginBottom: 7 }}>Profile layout</div>
-            <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-              {[['classic','Classic'],['compact','Compact'],['cards','Card-heavy'],['banner','Banner-focused']].map(([key,label]) => <button key={key} onClick={() => saveCustomization({ profile_layout: key as any }, 'Layout updated')} style={{ padding: '7px 10px', borderRadius: 9, border: `1px solid ${profile.profile_layout === key ? profileAccent(profile) : S.border2}`, background: profile.profile_layout === key ? profileTheme(profile).card2 : 'transparent', color: profile.profile_layout === key ? profileAccent(profile) : S.text2, cursor: 'pointer', fontSize: 12 }}>{label}</button>)}
             </div>
           </Card>
 
