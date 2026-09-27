@@ -34,6 +34,18 @@ const S = {
   red: '#ef4444', redDim: '#3b1515', fire: '#f97316',
 }
 
+const PROFILE_THEME_CARDS: any = {
+  clean: ['#161616','#1e1e1e'],
+  neon: ['#101317','#151b22'],
+  retro: ['#201a17','#2b211c'],
+  clown: ['#1e1216','#2b171d'],
+  fire: ['#1d1510','#2a1b12'],
+  darkblue: ['#101722','#151f2e'],
+}
+const profileAccent = (p: any) => p?.accent_color || S.blue
+const profileCard = (p: any) => (PROFILE_THEME_CARDS[p?.profile_theme] || PROFILE_THEME_CARDS.clean)[0]
+const profileCard2 = (p: any) => (PROFILE_THEME_CARDS[p?.profile_theme] || PROFILE_THEME_CARDS.clean)[1]
+
 const Av = ({ p, size = 36 }: { p: any; size?: number }) => (
   <div style={{
     width: size, height: size, borderRadius: '50%', flexShrink: 0,
@@ -51,6 +63,26 @@ const Av = ({ p, size = 36 }: { p: any; size?: number }) => (
 const Card = ({ children, style = {}, ...props }: any) => (
   <div {...props} style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 16, ...style }}>{children}</div>
 )
+
+const ProfileStyleShowcase = ({ p, pinnedPost, badges }: { p: any; pinnedPost: any; badges: string[] }) => {
+  const accent = profileAccent(p)
+  const compact = p?.profile_layout === 'compact'
+  const cards = p?.profile_layout === 'cards'
+  const banner = p?.profile_layout === 'banner'
+  return (
+    <div style={{ background: profileCard(p), border: `1px solid ${accent}66`, borderRadius: 14, padding: compact ? 10 : 14, margin: '10px 0 14px' }}>
+      <div style={{ height: banner ? 56 : 5, borderRadius: 8, marginBottom: compact ? 8 : 11, background: `linear-gradient(90deg,${accent},${profileCard2(p)})` }} />
+      {p?.custom_title && <div style={{ color: accent, fontSize: compact ? 11 : 13, fontWeight: 700, marginBottom: 8 }}>{p.custom_title}</div>}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: pinnedPost ? 10 : 0 }}>
+        {badges.slice(0, 3).map(b => <span key={b} style={{ fontSize: 10, padding: '4px 8px', borderRadius: cards ? 7 : 20, background: profileCard2(p), border: `1px solid ${accent}55`, color: S.text2 }}>{b}</span>)}
+      </div>
+      {pinnedPost && <div style={{ background: profileCard2(p), borderRadius: 10, padding: compact ? 8 : 11, border: `1px solid ${accent}33` }}>
+        <div style={{ color: accent, fontSize: 10, fontWeight: 700, marginBottom: 5 }}>📌 PINNED POST</div>
+        <div style={{ fontSize: compact ? 11 : 12, color: S.text, lineHeight: 1.4 }}>{pinnedPost.text}</div>
+      </div>}
+    </div>
+  )
+}
 
 const CommentInput = memo(({ postId, profile, profiles, onSubmit }: {
   postId: number; profile: any; profiles: any[]; onSubmit: (postId: number, text: string) => Promise<boolean>
@@ -275,6 +307,7 @@ export default function Home() {
   const bannerRef = useRef<HTMLInputElement>(null)
   const draftRef = useRef<string>('')
   const bioRef = useRef<string>('')
+  const titleRef = useRef<string>('')
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -537,6 +570,23 @@ export default function Home() {
     notify('Bio saved', 'pos')
   }
 
+  const saveProfileCustomization = async (patch: any, message = 'Profile updated') => {
+    if (!profile) return
+    const { error } = await supabase.from('profiles').update(patch).eq('id', profile.id)
+    if (error) { notify(error.message, 'neg'); return }
+    setProfile(p => p ? { ...p, ...patch } : p)
+    setProfiles(ps => ps.map(p => p.id === profile.id ? { ...p, ...patch } : p))
+    notify(message, 'pos')
+  }
+
+  const toggleBadgeShowcase = async (badge: string) => {
+    if (!profile) return
+    const current = profile.showcased_badges || []
+    let next = current.includes(badge) ? current.filter((x: string) => x !== badge) : [...current, badge]
+    if (next.length > 3) next = next.slice(next.length - 3)
+    await saveProfileCustomization({ showcased_badges: next }, 'Badge showcase updated')
+  }
+
   const loadLedger = async () => {
     if (!profile) return
     const { data } = await supabase.from('aura_ledger').select('*').eq('user_id', profile.id).order('created_at', { ascending: false }).limit(50)
@@ -601,6 +651,11 @@ export default function Home() {
             </div>
             <div style={{ padding: '0 20px 24px', marginTop: -22 }}>
               <Av p={modalProfile} size={54} />
+              <ProfileStyleShowcase
+                p={modalProfile}
+                pinnedPost={posts.find(x => x.id === modalProfile.pinned_post_id && x.user_id === modalProfile.id)}
+                badges={(modalProfile.showcased_badges && modalProfile.showcased_badges.length) ? modalProfile.showcased_badges.filter((b: string) => getBadges(modalProfile).includes(b)) : getBadges(modalProfile).slice(0, 3)}
+              />
               <div style={{ marginTop: 10, marginBottom: 2, fontWeight: 700, fontSize: 20, color: S.text }}>
                 {modalProfile.username} {clownCount(modalProfile.aura) > 0 && '🤡'.repeat(clownCount(modalProfile.aura))}
               </div>
@@ -926,6 +981,11 @@ export default function Home() {
                   ✏️<input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={handleAvatarUpload} />
                 </label>
               </div>
+              <ProfileStyleShowcase
+                p={profile}
+                pinnedPost={posts.find(x => x.id === profile.pinned_post_id && x.user_id === profile.id)}
+                badges={(profile.showcased_badges && profile.showcased_badges.length) ? profile.showcased_badges.filter((b: string) => getBadges(profile).includes(b)) : getBadges(profile).slice(0, 3)}
+              />
               <div style={{ fontWeight: 700, fontSize: 20, color: S.text, marginBottom: 4 }}>
                 {profile.username} {clownCount(profile.aura) > 0 && '🤡'.repeat(clownCount(profile.aura))}
               </div>
@@ -981,6 +1041,51 @@ export default function Home() {
                 📒 {showLedger ? 'Hide Ledger' : 'View Ledger'}
                 </button>
               </div>
+            </div>
+          </Card>
+
+          <Card style={{ padding: 18, marginBottom: 10, background: profileCard(profile), border: `1px solid ${profileAccent(profile)}55` }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: profileAccent(profile), textTransform: 'uppercase', letterSpacing: 1, marginBottom: 14 }}>🎨 Customize profile</div>
+
+            <div style={{ fontSize: 11, color: S.text3, marginBottom: 7 }}>Accent color</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 15 }}>
+              {['#3b82f6','#a855f7','#22c55e','#f97316','#ef4444','#06b6d4','#eab308','#ec4899'].map(color => (
+                <button key={color} onClick={() => saveProfileCustomization({ accent_color: color }, 'Accent updated')} style={{ width: 28, height: 28, borderRadius: '50%', background: color, border: profile.accent_color === color ? '3px solid white' : '2px solid #444', cursor: 'pointer' }} />
+              ))}
+            </div>
+
+            <div style={{ fontSize: 11, color: S.text3, marginBottom: 7 }}>Theme</div>
+            <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 15 }}>
+              {['clean','neon','retro','clown','fire','darkblue'].map(theme => (
+                <button key={theme} onClick={() => saveProfileCustomization({ profile_theme: theme }, 'Theme updated')} style={{ padding: '7px 10px', borderRadius: 9, border: `1px solid ${profile.profile_theme === theme ? profileAccent(profile) : S.border2}`, background: profile.profile_theme === theme ? profileCard2(profile) : 'transparent', color: profile.profile_theme === theme ? profileAccent(profile) : S.text2, cursor: 'pointer' }}>{theme}</button>
+              ))}
+            </div>
+
+            <div style={{ fontSize: 11, color: S.text3, marginBottom: 7 }}>Custom title</div>
+            <div style={{ display: 'flex', gap: 7, marginBottom: 15 }}>
+              <input defaultValue={profile.custom_title || ''} onChange={e => { titleRef.current = e.target.value }} maxLength={40} placeholder="Certified Glazer" style={{ flex: 1, minWidth: 0, padding: '9px 11px', borderRadius: 9, border: `1px solid ${S.border2}`, background: profileCard2(profile), color: S.text, fontSize: 16 }} />
+              <button onClick={() => saveProfileCustomization({ custom_title: titleRef.current.trim() || null }, 'Title updated')} style={{ padding: '8px 12px', borderRadius: 9, border: 'none', background: profileAccent(profile), color: '#fff', cursor: 'pointer', fontWeight: 600 }}>Save</button>
+            </div>
+
+            <div style={{ fontSize: 11, color: S.text3, marginBottom: 7 }}>Pinned post</div>
+            <select value={profile.pinned_post_id || ''} onChange={e => saveProfileCustomization({ pinned_post_id: e.target.value ? Number(e.target.value) : null }, 'Pinned post updated')} style={{ width: '100%', padding: '9px 11px', borderRadius: 9, border: `1px solid ${S.border2}`, background: profileCard2(profile), color: S.text, fontSize: 16, marginBottom: 15 }}>
+              <option value="">No pinned post</option>
+              {posts.filter(p => p.user_id === profile.id).map(p => <option key={p.id} value={p.id}>{p.text.slice(0,50)}</option>)}
+            </select>
+
+            <div style={{ fontSize: 11, color: S.text3, marginBottom: 7 }}>Badge showcase — choose up to 3</div>
+            <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap', marginBottom: 15 }}>
+              {getBadges(profile).map(b => {
+                const active = (profile.showcased_badges || []).includes(b)
+                return <button key={b} onClick={() => toggleBadgeShowcase(b)} style={{ padding: '6px 10px', borderRadius: 20, border: `1px solid ${active ? profileAccent(profile) : S.border2}`, background: active ? profileCard2(profile) : 'transparent', color: active ? profileAccent(profile) : S.text2, cursor: 'pointer' }}>{b}</button>
+              })}
+            </div>
+
+            <div style={{ fontSize: 11, color: S.text3, marginBottom: 7 }}>Profile layout</div>
+            <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
+              {['classic','compact','cards','banner'].map(layout => (
+                <button key={layout} onClick={() => saveProfileCustomization({ profile_layout: layout }, 'Layout updated')} style={{ padding: '7px 10px', borderRadius: 9, border: `1px solid ${profile.profile_layout === layout ? profileAccent(profile) : S.border2}`, background: profile.profile_layout === layout ? profileCard2(profile) : 'transparent', color: profile.profile_layout === layout ? profileAccent(profile) : S.text2, cursor: 'pointer' }}>{layout}</button>
+              ))}
             </div>
           </Card>
 
