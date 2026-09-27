@@ -11,6 +11,12 @@ export type Profile = {
   created_at: string
   is_member: boolean
   notify_new_posts: boolean
+  accent_color: string
+  profile_theme: 'clean' | 'neon' | 'retro' | 'clown' | 'fire' | 'darkblue'
+  pinned_post_id: number | null
+  custom_title: string | null
+  showcased_badges: string[]
+  profile_layout: 'classic' | 'compact' | 'cards' | 'banner'
 }
 
 export type Post = {
