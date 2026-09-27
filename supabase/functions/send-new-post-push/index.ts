@@ -30,7 +30,7 @@ Deno.serve(async req => {
 
     const { post_id } = await req.json()
     const { data: post } = await admin.from('posts')
-      .select('id,user_id,text,profiles!inner(username,is_member)')
+      .select('id,user_id,text,profiles!posts_user_id_fkey(username,is_member)')
       .eq('id', post_id)
       .single()
 
