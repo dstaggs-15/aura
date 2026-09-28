@@ -43,6 +43,7 @@ const PROFILE_THEME_CARDS: any = {
   darkblue: ['#101722','#151f2e'],
 }
 const profileAccent = (p: any) => p?.accent_color || S.blue
+const usernameColor = (p: any) => p?.username_color || S.text
 const profileCard = (p: any) => (PROFILE_THEME_CARDS[p?.profile_theme] || PROFILE_THEME_CARDS.clean)[0]
 const profileCard2 = (p: any) => (PROFILE_THEME_CARDS[p?.profile_theme] || PROFILE_THEME_CARDS.clean)[1]
 
@@ -91,7 +92,7 @@ const CommentInput = memo(({ postId, profile, profiles, onSubmit }: {
   const [mentionQuery, setMentionQuery] = useState<string | null>(null)
   const updateMentionQuery = (value: string, caret = value.length) => {
     const beforeCaret = value.slice(0, caret)
-    const match = beforeCaret.match(/(?:^|\\s)@([\\w]*)$/)
+    const match = beforeCaret.match(/(?:^|\\s)@([^\\s@]*)$/)
     setMentionQuery(match ? match[1].toLowerCase() : null)
   }
   const suggestions = mentionQuery === null ? [] : profiles
@@ -101,7 +102,7 @@ const CommentInput = memo(({ postId, profile, profiles, onSubmit }: {
     const input = inputRef.current
     if (!input) return
     const caret = input.selectionStart ?? input.value.length
-    const before = input.value.slice(0, caret).replace(/(?:^|\\s)@[\\w]*$/, m => {
+    const before = input.value.slice(0, caret).replace(/(?:^|\\s)@[^\\s@]*$/, m => {
       const prefix = m.startsWith(' ') ? ' ' : ''
       return `${prefix}@${username} `
     })
@@ -128,7 +129,7 @@ const CommentInput = memo(({ postId, profile, profiles, onSubmit }: {
               <button key={p.id} type="button" onMouseDown={e => e.preventDefault()} onClick={() => chooseMention(p.username)}
                 style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 9, padding: '9px 12px', background: 'transparent', border: 'none', borderBottom: `1px solid ${S.border}`, color: S.text, cursor: 'pointer', textAlign: 'left' }}>
                 <Av p={p} size={26} />
-                <span style={{ fontSize: 13, fontWeight: 600 }}>@{p.username}</span>
+                <span style={{ fontSize: 13, fontWeight: 600, color: usernameColor(p) }}>@{p.username}</span>
               </button>
             ))}
           </div>
@@ -146,7 +147,7 @@ const CommentInput = memo(({ postId, profile, profiles, onSubmit }: {
 CommentInput.displayName = 'CommentInput'
 
 const renderText = (text: string, color = '#ccc') => {
-  const parts = text.split(/(@\w+)/g)
+  const parts = text.split(/(@[^\s@]+)/g)
   return (
     <p style={{ margin: 0, fontSize: 14, lineHeight: 1.6, color, unicodeBidi: 'plaintext', textAlign: 'left' } as any}>
       {parts.map((part, i) =>
@@ -181,7 +182,7 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
-            <span onClick={() => onOpenProfile(owner)} style={{ fontWeight: 600, fontSize: 14, cursor: 'pointer', color: S.text }}>{owner.username}</span>
+            <span onClick={() => onOpenProfile(owner)} style={{ fontWeight: 600, fontSize: 14, cursor: 'pointer', color: usernameColor(owner) }}>{owner.username}</span>
             {cc > 0 && <span style={{ fontSize: 13 }}>{'🤡'.repeat(cc)}</span>}
             {owner.streak >= 3 && <span style={{ fontSize: 12, color: S.fire }}>🔥{owner.streak}</span>}
             <span style={{ fontSize: 11, color: S.text3, marginLeft: 'auto' }}>{timeAgo(post.created_at)}</span>
@@ -190,7 +191,7 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
           {taggedUsers.length > 0 && (
             <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 8 }}>
               {taggedUsers.map((u: any) => (
-                <span key={u.id} onClick={() => onOpenProfile(u)} style={{ fontSize: 11, color: S.blue, background: S.blueDim, padding: '2px 8px', borderRadius: 20, cursor: 'pointer', fontWeight: 500 }}>
+                <span key={u.id} onClick={() => onOpenProfile(u)} style={{ fontSize: 11, color: usernameColor(u), background: S.blueDim, padding: '2px 8px', borderRadius: 20, cursor: 'pointer', fontWeight: 500 }}>
                   📍 {u.username}
                 </span>
               ))}
@@ -225,7 +226,7 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
       </div>
 
       {showVotes && <div style={{ padding: '8px 16px 10px', borderTop: `1px solid ${S.border}`, fontSize: 12 }}>
-        {postVotes.length === 0 ? <span style={{ color: S.text3 }}>No votes yet.</span> : postVotes.map((v: any) => { const vp=profiles.find((p:any)=>p.id===v.voter_id); return <div key={v.voter_id} style={{ display:'flex',justifyContent:'space-between',padding:'4px 0' }}><span style={{ color:S.text2 }}>@{vp?.username || 'user'}</span><b style={{ color:v.value>=0?S.blue:S.red }}>{fmtAura(v.value)}</b></div> })}
+        {postVotes.length === 0 ? <span style={{ color: S.text3 }}>No votes yet.</span> : postVotes.map((v: any) => { const vp=profiles.find((p:any)=>p.id===v.voter_id); return <div key={v.voter_id} style={{ display:'flex',justifyContent:'space-between',padding:'4px 0' }}><span style={{ color: vp ? usernameColor(vp) : S.text2 }}>@{vp?.username || 'user'}</span><b style={{ color:v.value>=0?S.blue:S.red }}>{fmtAura(v.value)}</b></div> })}
       </div>}
       <div style={{ borderTop: `1px solid ${S.border}` }}>
         <button onClick={() => onToggleComments(post.id)} style={{ width: '100%', padding: '10px 16px', background: 'transparent', border: 'none', color: S.text3, fontSize: 12, cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -241,7 +242,7 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
                 <div key={c.id} style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
                   <Av p={cu} size={26} />
                   <div style={{ flex: 1, background: S.card2, borderRadius: 10, padding: '8px 12px' }}>
-                    <div style={{ fontWeight: 600, fontSize: 12, color: S.text, marginBottom: 3 }}>{cu.username}</div>
+                    <div style={{ fontWeight: 600, fontSize: 12, color: usernameColor(cu), marginBottom: 3 }}>{cu.username}</div>
                     {renderText(c.text, '#ccc')}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 7 }}>
                       <span style={{ fontFamily: 'monospace', fontSize: 11, fontWeight: 700, color: (c.aura || 0) >= 0 ? S.blue : S.red }}>{fmtAura(c.aura || 0)}</span>
@@ -265,7 +266,7 @@ const TagPicker = ({ profiles, selected, onToggle }: { profiles: any[], selected
     {profiles.map(p => (
       <div key={p.id} onClick={() => onToggle(p.id)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', cursor: 'pointer', background: selected.includes(p.id) ? S.blueDim : 'transparent', borderBottom: `1px solid ${S.border}` }}>
         <Av p={p} size={28} />
-        <span style={{ fontSize: 13, color: S.text }}>{p.username}</span>
+        <span style={{ fontSize: 13, color: usernameColor(p) }}>{p.username}</span>
         {selected.includes(p.id) && <span style={{ marginLeft: 'auto', color: S.blue, fontSize: 12 }}>✓ Tagged</span>}
       </div>
     ))}
@@ -661,7 +662,7 @@ export default function Home() {
                 pinnedPost={posts.find(x => x.id === modalProfile.pinned_post_id && x.user_id === modalProfile.id)}
                 badges={(modalProfile.showcased_badges && modalProfile.showcased_badges.length) ? modalProfile.showcased_badges.filter((b: string) => getBadges(modalProfile).includes(b)) : getBadges(modalProfile).slice(0, 3)}
               />
-              <div style={{ marginTop: 10, marginBottom: 2, fontWeight: 700, fontSize: 20, color: S.text }}>
+              <div style={{ marginTop: 10, marginBottom: 2, fontWeight: 700, fontSize: 20, color: usernameColor(modalProfile) }}>
                 {modalProfile.username} {clownCount(modalProfile.aura) > 0 && '🤡'.repeat(clownCount(modalProfile.aura))}
               </div>
               {modalProfile.bio && <p style={{ fontSize: 13, color: S.text2, marginBottom: 14, lineHeight: 1.55 }}>{modalProfile.bio}</p>}
@@ -744,7 +745,7 @@ export default function Home() {
         <span style={{ fontFamily: 'monospace', fontWeight: 700, color: S.text }}>{taxBucket.toFixed(1)} aura</span>
         <span style={{ color: S.border2 }}>·</span>
         <span>in the prize pool · top post wins Sunday</span>
-        {topPostUser && <><span style={{ color: S.border2 }}>·</span><span style={{ color: S.blue }}>👑 {topPostUser.username} leading</span></>}
+        {topPostUser && <><span style={{ color: S.border2 }}>·</span><span style={{ color: usernameColor(topPostUser) }}>👑 {topPostUser.username} leading</span></>}
       </div>
 
       <div style={{ background: S.card, borderBottom: `1px solid ${S.border}`, display: 'flex', overflowX: 'auto', WebkitOverflowScrolling: 'touch' } as any}>
@@ -776,7 +777,7 @@ export default function Home() {
                   {selectedTags.map(id => {
                     const u = profiles.find(p => p.id === id)
                     return u ? (
-                      <span key={id} style={{ fontSize: 12, color: S.blue, background: S.blueDim, padding: '3px 10px', borderRadius: 20, display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <span key={id} style={{ fontSize: 12, color: usernameColor(u), background: S.blueDim, padding: '3px 10px', borderRadius: 20, display: 'flex', alignItems: 'center', gap: 5 }}>
                         📍 {u.username}
                         <span onClick={() => setSelectedTags(t => t.filter(x => x !== id))} style={{ cursor: 'pointer', opacity: .7 }}>✕</span>
                       </span>
@@ -848,7 +849,7 @@ export default function Home() {
                 <div style={{ width: 28, textAlign: 'center', fontSize: medal ? 18 : 13, color: S.text3, fontWeight: 700, flexShrink: 0 }}>{medal || i + 1}</div>
                 <Av p={u} size={38} />
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: 14, color: S.text, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ fontWeight: 600, fontSize: 14, color: usernameColor(u), display: 'flex', alignItems: 'center', gap: 6 }}>
                     {u.username}
                     {u.id === profile.id && <span style={{ fontSize: 10, color: S.blue, background: S.blueDim, padding: '1px 6px', borderRadius: 4 }}>you</span>}
                     {cc > 0 && <span>{'🤡'.repeat(cc)}</span>}
@@ -870,7 +871,7 @@ export default function Home() {
                   <p style={{ fontSize: 14, color: '#ccc', marginBottom: 7, lineHeight: 1.5 }}>{p.text}</p>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                     <Av p={owner} size={18} />
-                    <span style={{ fontSize: 12, color: S.text2 }}>{owner.username}</span>
+                    <span style={{ fontSize: 12, color: usernameColor(owner) }}>{owner.username}</span>
                     <span style={{ fontSize: 11, color: S.text3 }}>· {timeAgo(p.created_at)}</span>
                   </div>
                 </div>
@@ -889,7 +890,7 @@ export default function Home() {
               if (!u) return null
               return <div key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 0', borderBottom: `1px solid ${S.border}` }}>
                 <Av p={u} size={34} />
-                <span onClick={() => setModalProfile(u)} style={{ flex: 1, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>{u.username}</span>
+                <span onClick={() => setModalProfile(u)} style={{ flex: 1, fontSize: 14, fontWeight: 600, cursor: 'pointer', color: usernameColor(u) }}>{u.username}</span>
                 <button onClick={() => handleFriend(u.id, 'accept')} style={{ padding: '6px 12px', borderRadius: 8, border: 'none', background: S.blue, color: '#fff', cursor: 'pointer' }}>Accept</button>
                 <button onClick={() => handleFriend(u.id, 'remove')} style={{ padding: '6px 10px', borderRadius: 8, border: `1px solid ${S.border2}`, background: 'transparent', color: S.text2, cursor: 'pointer' }}>Decline</button>
               </div>
@@ -905,7 +906,7 @@ export default function Home() {
               return <div key={f.id} onClick={() => setModalProfile(u)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0', borderBottom: `1px solid ${S.border}`, cursor: 'pointer' }}>
                 <Av p={u} size={36} />
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600 }}>{u.username} {clownCount(u.aura) > 0 && '🤡'.repeat(clownCount(u.aura))}</div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: usernameColor(u) }}>{u.username} {clownCount(u.aura) > 0 && '🤡'.repeat(clownCount(u.aura))}</div>
                   <div style={{ fontSize: 11, color: S.text3 }}>{fmtAura(u.aura)} aura</div>
                 </div>
               </div>
@@ -924,7 +925,7 @@ export default function Home() {
                 <p style={{ fontSize: 14, color: '#ccc', marginBottom: 8, lineHeight: 1.5 }}>{topPost.text}</p>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <Av p={topPostUser} size={20} />
-                  <span style={{ fontSize: 12, color: S.text2 }}>{topPostUser.username}</span>
+                  <span style={{ fontSize: 12, color: usernameColor(topPostUser) }}>{topPostUser.username}</span>
                   <span style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 700, color: S.blue, marginLeft: 'auto' }}>{fmtAura(topPost.aura)}</span>
                 </div>
               </div>
@@ -991,7 +992,7 @@ export default function Home() {
                 pinnedPost={posts.find(x => x.id === profile.pinned_post_id && x.user_id === profile.id)}
                 badges={(profile.showcased_badges && profile.showcased_badges.length) ? profile.showcased_badges.filter((b: string) => getBadges(profile).includes(b)) : getBadges(profile).slice(0, 3)}
               />
-              <div style={{ fontWeight: 700, fontSize: 20, color: S.text, marginBottom: 4 }}>
+              <div style={{ fontWeight: 700, fontSize: 20, color: usernameColor(profile), marginBottom: 4 }}>
                 {profile.username} {clownCount(profile.aura) > 0 && '🤡'.repeat(clownCount(profile.aura))}
               </div>
               <div style={{ margin: '10px 0 16px' }}>
@@ -1064,11 +1065,19 @@ export default function Home() {
               <input defaultValue={profile.username} onChange={e => { usernameRef.current = e.target.value }} maxLength={30} placeholder="your_username" style={{ flex: 1, minWidth: 0, padding: '9px 11px', borderRadius: 9, border: `1px solid ${S.border2}`, background: profileCard2(profile), color: S.text, fontSize: 16 }} />
               <button onClick={async () => {
                 const requested = (usernameRef.current || profile.username).trim()
-                const normalized = requested.toLowerCase().replaceAll(' ', '_')
+                const normalized = requested.trim().toLowerCase().replace(/\\s+/g, '_')
                 await saveProfileCustomization({ username: normalized }, 'Username updated')
               }} style={{ padding: '8px 12px', borderRadius: 9, border: 'none', background: profileAccent(profile), color: '#fff', cursor: 'pointer', fontWeight: 600 }}>Save</button>
             </div>
-            <div style={{ fontSize: 10, color: S.text3, marginTop: -9, marginBottom: 15 }}>2–30 letters, numbers, or underscores. Usernames are saved lowercase.</div>
+            <div style={{ fontSize: 10, color: S.text3, marginTop: -9, marginBottom: 15 }}>2–30 characters. Emojis are allowed; spaces become underscores; @ is reserved for mentions.</div>
+
+            <div style={{ fontSize: 11, color: S.text3, marginBottom: 7 }}>Name text color</div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 15 }}>
+              {['#f0f0f0','#3b82f6','#a855f7','#22c55e','#f97316','#ef4444','#06b6d4','#eab308','#ec4899'].map(color => (
+                <button key={color} onClick={() => saveProfileCustomization({ username_color: color }, 'Name color updated')} aria-label={color} style={{ width: 28, height: 28, borderRadius: '50%', background: color, border: profile.username_color === color ? '3px solid white' : '2px solid #444', cursor: 'pointer' }} />
+              ))}
+              <input type="color" value={profile.username_color || '#f0f0f0'} onChange={e => saveProfileCustomization({ username_color: e.target.value }, 'Name color updated')} style={{ width: 34, height: 30, border: 'none', background: 'transparent' }} />
+            </div>
 
             <div style={{ fontSize: 11, color: S.text3, marginBottom: 7 }}>Accent color</div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 15 }}>
