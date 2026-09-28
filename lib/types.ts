@@ -1,6 +1,7 @@
 export type Profile = {
   id: string
   username: string
+  username_color: string
   bio: string | null
   avatar_url: string | null
   banner_url: string | null
