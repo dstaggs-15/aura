@@ -309,6 +309,7 @@ export default function Home() {
   const draftRef = useRef<string>('')
   const bioRef = useRef<string>('')
   const titleRef = useRef<string>('')
+  const usernameRef = useRef<string>('')
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -1057,6 +1058,17 @@ export default function Home() {
           {showCustomize && (
           <Card style={{ padding: 18, marginBottom: 10, background: profileCard(profile), border: `1px solid ${profileAccent(profile)}55` }}>
             <div style={{ fontSize: 12, fontWeight: 700, color: profileAccent(profile), textTransform: 'uppercase', letterSpacing: 1, marginBottom: 14 }}>🎨 Customize profile</div>
+
+            <div style={{ fontSize: 11, color: S.text3, marginBottom: 7 }}>Username</div>
+            <div style={{ display: 'flex', gap: 7, marginBottom: 15 }}>
+              <input defaultValue={profile.username} onChange={e => { usernameRef.current = e.target.value }} maxLength={30} placeholder="your_username" style={{ flex: 1, minWidth: 0, padding: '9px 11px', borderRadius: 9, border: `1px solid ${S.border2}`, background: profileCard2(profile), color: S.text, fontSize: 16 }} />
+              <button onClick={async () => {
+                const requested = (usernameRef.current || profile.username).trim()
+                const normalized = requested.toLowerCase().replaceAll(' ', '_')
+                await saveProfileCustomization({ username: normalized }, 'Username updated')
+              }} style={{ padding: '8px 12px', borderRadius: 9, border: 'none', background: profileAccent(profile), color: '#fff', cursor: 'pointer', fontWeight: 600 }}>Save</button>
+            </div>
+            <div style={{ fontSize: 10, color: S.text3, marginTop: -9, marginBottom: 15 }}>2–30 letters, numbers, or underscores. Usernames are saved lowercase.</div>
 
             <div style={{ fontSize: 11, color: S.text3, marginBottom: 7 }}>Accent color</div>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 15 }}>
