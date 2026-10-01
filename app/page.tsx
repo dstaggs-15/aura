@@ -47,6 +47,9 @@ const PROFILE_THEME_CARDS: any = {
 }
 const profileAccent = (p: any) => p?.accent_color || S.blue
 const usernameColor = (p: any) => p?.username_color || S.text
+const founderUsername = 'dstaggs15'
+const isFounder = (p: any) => p?.username?.toLowerCase() === founderUsername
+const FounderTag = ({ p }: { p: any }) => isFounder(p) ? <span title="Founder of Aura" style={{ fontSize: 11, fontWeight: 700, color: '#fbbf24', whiteSpace: 'nowrap' }}>🐐 Father Aura · Founder</span> : null
 const profileCard = (p: any) => (PROFILE_THEME_CARDS[p?.profile_theme] || PROFILE_THEME_CARDS.clean)[0]
 const profileCard2 = (p: any) => (PROFILE_THEME_CARDS[p?.profile_theme] || PROFILE_THEME_CARDS.clean)[1]
 
@@ -186,6 +189,7 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
             <span onClick={() => onOpenProfile(owner)} style={{ fontWeight: 600, fontSize: 14, cursor: 'pointer', color: usernameColor(owner) }}>{owner.username}</span>
+            {isFounder(owner) && <span title="Father Aura · Founder" style={{ fontSize: 13 }}>🐐</span>}
             {isJester(owner, profiles) && <span title="Jester — lowest Aura" style={{ fontSize: 14 }}>🃏</span>}
             {cc > 0 && <span style={{ fontSize: 13 }}>{'🤡'.repeat(cc)}</span>}
             {owner.streak >= 3 && <span style={{ fontSize: 12, color: S.fire }}>🔥{owner.streak}</span>}
@@ -670,8 +674,9 @@ export default function Home() {
                 badges={(modalProfile.showcased_badges && modalProfile.showcased_badges.length) ? modalProfile.showcased_badges.filter((b: string) => getBadges(modalProfile).includes(b)) : getBadges(modalProfile).slice(0, 3)}
               />
               <div style={{ marginTop: 10, marginBottom: 2, fontWeight: 700, fontSize: 20, color: usernameColor(modalProfile) }}>
-                {modalProfile.username} {isJester(modalProfile, profiles) && '🃏'} {clownCount(modalProfile.aura) > 0 && '🤡'.repeat(clownCount(modalProfile.aura))}
+                {modalProfile.username} {isFounder(modalProfile) && '🐐'} {isJester(modalProfile, profiles) && '🃏'} {clownCount(modalProfile.aura) > 0 && '🤡'.repeat(clownCount(modalProfile.aura))}
               </div>
+              {isFounder(modalProfile) && <div style={{ marginBottom: 8 }}><FounderTag p={modalProfile} /></div>}
               {(auraRankTitle(modalProfile.aura) || isJester(modalProfile, profiles)) && <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
                 {auraRankTitle(modalProfile.aura) && <span style={{ fontSize: 12, fontWeight: 700, color: profileAccent(modalProfile) }}>{modalProfile.aura >= 1000 ? '👑' : '🏰'} {auraRankTitle(modalProfile.aura)}</span>}
                 {isJester(modalProfile, profiles) && <span style={{ fontSize: 12, fontWeight: 700, color: S.fire }}>🃏 Jester</span>}
@@ -862,6 +867,7 @@ export default function Home() {
                 <div style={{ flex: 1 }}>
                   <div style={{ fontWeight: 600, fontSize: 14, color: usernameColor(u), display: 'flex', alignItems: 'center', gap: 6 }}>
                     {u.username}
+                    {isFounder(u) && <span title="Father Aura · Founder" style={{ fontSize: 13 }}>🐐</span>}
                     {u.id === profile.id && <span style={{ fontSize: 10, color: S.blue, background: S.blueDim, padding: '1px 6px', borderRadius: 4 }}>you</span>}
                     {cc > 0 && <span>{'🤡'.repeat(cc)}</span>}
                   </div>
@@ -1005,8 +1011,9 @@ export default function Home() {
                 badges={(profile.showcased_badges && profile.showcased_badges.length) ? profile.showcased_badges.filter((b: string) => getBadges(profile).includes(b)) : getBadges(profile).slice(0, 3)}
               />
               <div style={{ fontWeight: 700, fontSize: 20, color: usernameColor(profile), marginBottom: 4 }}>
-                {profile.username} {isJester(profile, profiles) && '🃏'} {clownCount(profile.aura) > 0 && '🤡'.repeat(clownCount(profile.aura))}
+                {profile.username} {isFounder(profile) && '🐐'} {isJester(profile, profiles) && '🃏'} {clownCount(profile.aura) > 0 && '🤡'.repeat(clownCount(profile.aura))}
               </div>
+              {isFounder(profile) && <div style={{ marginBottom: 8 }}><FounderTag p={profile} /></div>}
               {(auraRankTitle(profile.aura) || isJester(profile, profiles)) && <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
                 {auraRankTitle(profile.aura) && <span style={{ fontSize: 12, fontWeight: 700, color: profileAccent(profile) }}>{profile.aura >= 1000 ? '👑' : '🏰'} {auraRankTitle(profile.aura)}</span>}
                 {isJester(profile, profiles) && <span style={{ fontSize: 12, fontWeight: 700, color: S.fire }}>🃏 Jester</span>}
