@@ -7,6 +7,9 @@ const VOTE_OPTS = [-50, -10, -5, -1, 1, 5, 10, 50]
 const fmtAura = (n: number) => (n >= 0 ? "+" : "") + n.toLocaleString()
 const clownCount = (a: number) => a < -499 ? 3 : a < -99 ? 2 : a < 0 ? 1 : 0
 const clownTitle = (a: number) => a <= -500 ? 'Mega Clown' : a <= -100 ? 'Big Clown' : a < 0 ? 'Clown' : null
+const auraRankTitle = (a: number) => a >= 1000 ? 'King Aura' : a >= 500 ? 'Lord Aura' : null
+const jesterId = (profiles: any[]) => [...profiles].sort((a, b) => a.aura - b.aura || new Date(a.created_at).getTime() - new Date(b.created_at).getTime() || String(a.id).localeCompare(String(b.id)))[0]?.id || null
+const isJester = (p: any, profiles: any[]) => !!p && p.id === jesterId(profiles)
 const currentWeekStart = () => {
   const d = new Date()
   const diff = (d.getUTCDay() + 6) % 7
@@ -183,6 +186,7 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 5 }}>
             <span onClick={() => onOpenProfile(owner)} style={{ fontWeight: 600, fontSize: 14, cursor: 'pointer', color: usernameColor(owner) }}>{owner.username}</span>
+            {isJester(owner, profiles) && <span title="Jester — lowest Aura" style={{ fontSize: 14 }}>🃏</span>}
             {cc > 0 && <span style={{ fontSize: 13 }}>{'🤡'.repeat(cc)}</span>}
             {owner.streak >= 3 && <span style={{ fontSize: 12, color: S.fire }}>🔥{owner.streak}</span>}
             <span style={{ fontSize: 11, color: S.text3, marginLeft: 'auto' }}>{timeAgo(post.created_at)}</span>
@@ -612,6 +616,9 @@ export default function Home() {
 
   const getBadges = (p: any) => {
     const b = ['🌐 Joined']
+    if (p.aura >= 1000) b.push('👑 King Aura')
+    else if (p.aura >= 500) b.push('🏰 Lord Aura')
+    if (isJester(p, profiles)) b.push('🃏 Jester')
     if (p.streak >= 7) b.push('🔥 Streaker')
     if (p.streak >= 30) b.push('💀 Obsessed')
     if (p.aura >= 1000) b.push('⚡ Legendary')
@@ -663,8 +670,12 @@ export default function Home() {
                 badges={(modalProfile.showcased_badges && modalProfile.showcased_badges.length) ? modalProfile.showcased_badges.filter((b: string) => getBadges(modalProfile).includes(b)) : getBadges(modalProfile).slice(0, 3)}
               />
               <div style={{ marginTop: 10, marginBottom: 2, fontWeight: 700, fontSize: 20, color: usernameColor(modalProfile) }}>
-                {modalProfile.username} {clownCount(modalProfile.aura) > 0 && '🤡'.repeat(clownCount(modalProfile.aura))}
+                {modalProfile.username} {isJester(modalProfile, profiles) && '🃏'} {clownCount(modalProfile.aura) > 0 && '🤡'.repeat(clownCount(modalProfile.aura))}
               </div>
+              {(auraRankTitle(modalProfile.aura) || isJester(modalProfile, profiles)) && <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+                {auraRankTitle(modalProfile.aura) && <span style={{ fontSize: 12, fontWeight: 700, color: profileAccent(modalProfile) }}>{modalProfile.aura >= 1000 ? '👑' : '🏰'} {auraRankTitle(modalProfile.aura)}</span>}
+                {isJester(modalProfile, profiles) && <span style={{ fontSize: 12, fontWeight: 700, color: S.fire }}>🃏 Jester</span>}
+              </div>}
               {modalProfile.bio && <p style={{ fontSize: 13, color: S.text2, marginBottom: 14, lineHeight: 1.55 }}>{modalProfile.bio}</p>}
               <div style={{ display: 'flex', gap: 24, margin: '14px 0' }}>
                 {[
@@ -964,6 +975,7 @@ export default function Home() {
             { title: '💬 Comments', body: 'Tap the comment button on any post to see and leave comments.' },
             { title: '📒 Ledger', body: 'Go to your Profile and tap Ledger to see every aura transaction — what you gained, lost, and when.' },
             { title: '⭐ All-time aura', body: 'Your highest aura ever. Shows on your profile and leaderboard. Even if you lose aura, your all-time record stays.' },
+            { title: '👑 Aura titles', body: 'Reach 500 current aura to become Lord Aura, and 1,000 current aura to become King Aura. The member with the lowest current aura is the Jester 🃏. Jester status can stack with clown mode.' },
           ].map(item => (
             <Card key={item.title} style={{ padding: 18, marginBottom: 10 }}>
               <div style={{ fontWeight: 600, fontSize: 15, color: S.text, marginBottom: 8 }}>{item.title}</div>
@@ -993,8 +1005,12 @@ export default function Home() {
                 badges={(profile.showcased_badges && profile.showcased_badges.length) ? profile.showcased_badges.filter((b: string) => getBadges(profile).includes(b)) : getBadges(profile).slice(0, 3)}
               />
               <div style={{ fontWeight: 700, fontSize: 20, color: usernameColor(profile), marginBottom: 4 }}>
-                {profile.username} {clownCount(profile.aura) > 0 && '🤡'.repeat(clownCount(profile.aura))}
+                {profile.username} {isJester(profile, profiles) && '🃏'} {clownCount(profile.aura) > 0 && '🤡'.repeat(clownCount(profile.aura))}
               </div>
+              {(auraRankTitle(profile.aura) || isJester(profile, profiles)) && <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+                {auraRankTitle(profile.aura) && <span style={{ fontSize: 12, fontWeight: 700, color: profileAccent(profile) }}>{profile.aura >= 1000 ? '👑' : '🏰'} {auraRankTitle(profile.aura)}</span>}
+                {isJester(profile, profiles) && <span style={{ fontSize: 12, fontWeight: 700, color: S.fire }}>🃏 Jester</span>}
+              </div>}
               <div style={{ margin: '10px 0 16px' }}>
                 {editingBio ? (
                   <div>
