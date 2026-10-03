@@ -760,7 +760,7 @@ export default function Home() {
         <span>🏆</span>
         <span style={{ fontFamily: 'monospace', fontWeight: 700, color: S.text }}>{taxBucket.toFixed(1)} aura</span>
         <span style={{ color: S.border2 }}>·</span>
-        <span>in the prize pool · top post wins Sunday</span>
+        <span>in the clown-tax prize pool · top post wins Monday 00:00 UTC</span>
         {topPostUser && <><span style={{ color: S.border2 }}>·</span><span style={{ color: usernameColor(topPostUser) }}>👑 {topPostUser.username} leading</span></>}
       </div>
 
@@ -975,7 +975,7 @@ export default function Home() {
             { title: '📍 Tagging', body: 'When making a post, tap "Tag people" to tag someone in it. If your post gets votes, tagged people split a 50% bonus pool so tagging cannot multiply aura without limit. Tag people who are actually in the post.' },
             { title: '📊 Profile votes', body: "You can vote on someone's whole profile, not just their posts. Tap their name or avatar anywhere to pull up their profile and rate their vibe." },
             { title: '🤡 Negative aura', body: 'Drop below 0 and clown emojis start showing on your profile. Clown mode now has escalating tiers: Clown, Big Clown, and Mega Clown. Positive gains are taxed 25%, 35%, or 50% into the prize pool, while negative users get a larger daily comeback check-in.' },
-            { title: '🏆 Prize pool', body: 'Every Sunday at midnight, whoever has the highest-aura post that week wins the entire pool. The pool fills from the 25% tax on negative users.' },
+            { title: '🏆 Prize pool', body: 'Every Monday at 00:00 UTC, whoever had the highest-aura post in the completed week wins the entire pool. The pool only fills when users with negative aura receive positive gains; clown-tax rates are 25%, 35%, or 50% depending on their negative-aura tier.' },
             { title: '🔥 Streaks', body: 'Hit Check In every day for +5 aura, or +7 while in clown mode. Miss a day and your streak resets and you lose 2 aura per missed day (max 20). Log in daily or fall behind.' },
             { title: '🚫 Glazing', body: "Max 3 big votes (+50 or -50) to the same person per 24 hours. Go over that and you get hit with -50. Don't glaze." },
             { title: '💬 Comments', body: 'Tap the comment button on any post to see and leave comments.' },
