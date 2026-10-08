@@ -1098,6 +1098,24 @@ export default function Home() {
             </div>
           </Card>
 
+          {isFounder(profile) && (
+            <div style={{ marginBottom: 10 }}>
+              <button onClick={() => setShowAnnounce(v => !v)} style={{ width: '100%', padding: '10px 14px', borderRadius: 12, border: '1px solid #f59e0b66', background: showAnnounce ? '#2a1d0b' : 'transparent', color: '#fbbf24', fontSize: 13, fontWeight: 800, cursor: 'pointer' }}>
+                📣 {showAnnounce ? 'Close announce' : 'Announce'}
+              </button>
+              {showAnnounce && (
+                <Card style={{ padding: 14, marginTop: 8, background: '#18130b', border: '1px solid #f59e0b44' }}>
+                  <div style={{ fontSize: 11, color: '#fbbf24', fontWeight: 700, marginBottom: 8 }}>Send a push notification to all Aura users with an active push subscription, including you.</div>
+                  <textarea id="announce-text" maxLength={220} rows={4} placeholder="Type your announcement..." onChange={e => { announceRef.current = e.target.value }}
+                    style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: `1px solid ${S.border2}`, background: S.card2, color: S.text, fontSize: 16, fontFamily: 'inherit', resize: 'vertical', outline: 'none' }} />
+                  <button onClick={handleAnnounce} disabled={announceBusy} style={{ width: '100%', marginTop: 9, padding: '10px 14px', borderRadius: 10, border: 'none', background: announceBusy ? S.border2 : '#f59e0b', color: '#111', fontWeight: 800, cursor: announceBusy ? 'default' : 'pointer' }}>
+                    {announceBusy ? 'Sending...' : 'Send announcement'}
+                  </button>
+                </Card>
+              )}
+            </div>
+          )}
+
           <div style={{ marginBottom: 10 }}>
             <button onClick={() => setShowCustomize(v => !v)} style={{ width: '100%', padding: '10px 14px', borderRadius: 12, border: `1px solid ${profileAccent(profile)}66`, background: showCustomize ? profileCard2(profile) : 'transparent', color: profileAccent(profile), fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
               🎨 {showCustomize ? 'Hide customization' : 'Customize'}
