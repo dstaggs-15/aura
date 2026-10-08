@@ -47,8 +47,8 @@ const PROFILE_THEME_CARDS: any = {
 }
 const profileAccent = (p: any) => p?.accent_color || S.blue
 const usernameColor = (p: any) => p?.username_color || S.text
-const founderUsername = 'dstaggs15'
-const isFounder = (p: any) => p?.username?.toLowerCase() === founderUsername
+const FOUNDER_ID = '47001ee1-c4b8-4661-9657-016e9e6299ff'
+const isFounder = (p: any) => p?.id === FOUNDER_ID
 const FounderTag = ({ p }: { p: any }) => isFounder(p) ? <span title="Founder of Aura" style={{ fontSize: 11, fontWeight: 700, color: '#fbbf24', whiteSpace: 'nowrap' }}>🐐 Father Aura · Founder</span> : null
 const profileCard = (p: any) => (PROFILE_THEME_CARDS[p?.profile_theme] || PROFILE_THEME_CARDS.clean)[0]
 const profileCard2 = (p: any) => (PROFILE_THEME_CARDS[p?.profile_theme] || PROFILE_THEME_CARDS.clean)[1]
@@ -308,6 +308,8 @@ export default function Home() {
   const [ledger, setLedger] = useState<LedgerEntry[]>([])
   const [showLedger, setShowLedger] = useState(false)
   const [showCustomize, setShowCustomize] = useState(false)
+  const [showAnnounce, setShowAnnounce] = useState(false)
+  const [announceBusy, setAnnounceBusy] = useState(false)
   const [friendships, setFriendships] = useState<Friendship[]>([])
   const [pushEnabled, setPushEnabled] = useState(false)
   const [pushBusy, setPushBusy] = useState(false)
@@ -319,6 +321,7 @@ export default function Home() {
   const bioRef = useRef<string>('')
   const titleRef = useRef<string>('')
   const usernameRef = useRef<string>('')
+  const announceRef = useRef<string>('')
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -499,6 +502,28 @@ export default function Home() {
       if (pushError) console.warn('Push fanout failed:', pushError.message)
     }
     setPosting(false)
+  }
+
+  const handleAnnounce = async () => {
+    if (!profile || !isFounder(profile) || announceBusy) return
+    const message = announceRef.current.trim()
+    if (!message) { notify('Type an announcement first', 'neg'); return }
+    setAnnounceBusy(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('send-new-post-push', {
+        body: { announcement: message },
+      })
+      if (error) throw error
+      notify(`Announcement sent to ${data?.sent ?? 0} device${data?.sent === 1 ? '' : 's'} 🔥`, 'pos')
+      announceRef.current = ''
+      const box = document.getElementById('announce-text') as HTMLTextAreaElement | null
+      if (box) box.value = ''
+      setShowAnnounce(false)
+    } catch (err) {
+      notify(err instanceof Error ? err.message : 'Could not send announcement', 'neg')
+    } finally {
+      setAnnounceBusy(false)
+    }
   }
 
   const handleComment = async (postId: number, text: string): Promise<boolean> => {
@@ -1072,6 +1097,24 @@ export default function Home() {
               </div>
             </div>
           </Card>
+
+          {isFounder(profile) && (
+            <div style={{ marginBottom: 10 }}>
+              <button onClick={() => setShowAnnounce(v => !v)} style={{ width: '100%', padding: '10px 14px', borderRadius: 12, border: '1px solid #f59e0b66', background: showAnnounce ? '#2a1d0b' : 'transparent', color: '#fbbf24', fontSize: 13, fontWeight: 800, cursor: 'pointer' }}>
+                📣 {showAnnounce ? 'Close announce' : 'Announce'}
+              </button>
+              {showAnnounce && (
+                <Card style={{ padding: 14, marginTop: 8, background: '#18130b', border: '1px solid #f59e0b44' }}>
+                  <div style={{ fontSize: 11, color: '#fbbf24', fontWeight: 700, marginBottom: 8 }}>Send a push notification to all Aura users with an active push subscription, including you.</div>
+                  <textarea id="announce-text" maxLength={220} rows={4} placeholder="Type your announcement..." onChange={e => { announceRef.current = e.target.value }}
+                    style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: `1px solid ${S.border2}`, background: S.card2, color: S.text, fontSize: 16, fontFamily: 'inherit', resize: 'vertical', outline: 'none' }} />
+                  <button onClick={handleAnnounce} disabled={announceBusy} style={{ width: '100%', marginTop: 9, padding: '10px 14px', borderRadius: 10, border: 'none', background: announceBusy ? S.border2 : '#f59e0b', color: '#111', fontWeight: 800, cursor: announceBusy ? 'default' : 'pointer' }}>
+                    {announceBusy ? 'Sending...' : 'Send announcement'}
+                  </button>
+                </Card>
+              )}
+            </div>
+          )}
 
           <div style={{ marginBottom: 10 }}>
             <button onClick={() => setShowCustomize(v => !v)} style={{ width: '100%', padding: '10px 14px', borderRadius: 12, border: `1px solid ${profileAccent(profile)}66`, background: showCustomize ? profileCard2(profile) : 'transparent', color: profileAccent(profile), fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
