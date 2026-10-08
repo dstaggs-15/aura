@@ -308,6 +308,8 @@ export default function Home() {
   const [ledger, setLedger] = useState<LedgerEntry[]>([])
   const [showLedger, setShowLedger] = useState(false)
   const [showCustomize, setShowCustomize] = useState(false)
+  const [showAnnounce, setShowAnnounce] = useState(false)
+  const [announceBusy, setAnnounceBusy] = useState(false)
   const [friendships, setFriendships] = useState<Friendship[]>([])
   const [pushEnabled, setPushEnabled] = useState(false)
   const [pushBusy, setPushBusy] = useState(false)
@@ -319,6 +321,7 @@ export default function Home() {
   const bioRef = useRef<string>('')
   const titleRef = useRef<string>('')
   const usernameRef = useRef<string>('')
+  const announceRef = useRef<string>('')
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
