@@ -504,6 +504,28 @@ export default function Home() {
     setPosting(false)
   }
 
+  const handleAnnounce = async () => {
+    if (!profile || !isFounder(profile) || announceBusy) return
+    const message = announceRef.current.trim()
+    if (!message) { notify('Type an announcement first', 'neg'); return }
+    setAnnounceBusy(true)
+    try {
+      const { data, error } = await supabase.functions.invoke('send-new-post-push', {
+        body: { announcement: message },
+      })
+      if (error) throw error
+      notify(`Announcement sent to ${data?.sent ?? 0} device${data?.sent === 1 ? '' : 's'} 🔥`, 'pos')
+      announceRef.current = ''
+      const box = document.getElementById('announce-text') as HTMLTextAreaElement | null
+      if (box) box.value = ''
+      setShowAnnounce(false)
+    } catch (err) {
+      notify(err instanceof Error ? err.message : 'Could not send announcement', 'neg')
+    } finally {
+      setAnnounceBusy(false)
+    }
+  }
+
   const handleComment = async (postId: number, text: string): Promise<boolean> => {
     if (!profile || !text.trim()) return false
     const { data, error } = await supabase.from('comments').insert({ post_id: postId, user_id: profile.id, text: text.trim() }).select('*').single()
