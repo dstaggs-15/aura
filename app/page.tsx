@@ -47,8 +47,8 @@ const PROFILE_THEME_CARDS: any = {
 }
 const profileAccent = (p: any) => p?.accent_color || S.blue
 const usernameColor = (p: any) => p?.username_color || S.text
-const founderUsername = 'dstaggs15'
-const isFounder = (p: any) => p?.username?.toLowerCase() === founderUsername
+const FOUNDER_ID = '47001ee1-c4b8-4661-9657-016e9e6299ff'
+const isFounder = (p: any) => p?.id === FOUNDER_ID
 const FounderTag = ({ p }: { p: any }) => isFounder(p) ? <span title="Founder of Aura" style={{ fontSize: 11, fontWeight: 700, color: '#fbbf24', whiteSpace: 'nowrap' }}>🐐 Father Aura · Founder</span> : null
 const profileCard = (p: any) => (PROFILE_THEME_CARDS[p?.profile_theme] || PROFILE_THEME_CARDS.clean)[0]
 const profileCard2 = (p: any) => (PROFILE_THEME_CARDS[p?.profile_theme] || PROFILE_THEME_CARDS.clean)[1]
