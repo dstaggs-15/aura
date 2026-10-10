@@ -797,6 +797,12 @@ export default function Home() {
                         <button key={v} onClick={() => handleProfileVote(modalProfile.id, v)} style={{ padding: '5px 9px', borderRadius: 7, fontSize: 11, fontWeight: 700, fontFamily: 'monospace', cursor: 'pointer', border: `1px solid ${active ? 'transparent' : S.border2}`, background: active ? (neg ? S.red : S.blue) : S.card2, color: active ? '#fff' : (neg ? S.red : S.blue) }}>{v > 0 ? `+${v}` : v}</button>
                       )
                     })}
+                    <input value={profileCustomVote} inputMode="numeric" placeholder="custom" aria-label="Custom profile Aura vote"
+                      onChange={e => { if (/^-?\d*$/.test(e.target.value)) setProfileCustomVote(e.target.value) }}
+                      style={{ width: 68, padding: '5px 7px', borderRadius: 7, border: `1px solid ${S.border2}`, background: S.card2, color: S.text, fontSize: 11, fontFamily: 'monospace' }} />
+                    <button disabled={!profileCustomVote || Number(profileCustomVote) === 0 || Math.abs(Number(profileCustomVote)) > 100}
+                      onClick={() => { const v = Number(profileCustomVote); if (Number.isInteger(v) && v !== 0 && Math.abs(v) <= 100) handleProfileVote(modalProfile.id, v) }}
+                      style={{ padding: '5px 9px', borderRadius: 7, fontSize: 10, fontWeight: 700, border: `1px solid ${S.border2}`, background: 'transparent', color: S.text2, cursor: 'pointer' }}>Vote</button>
                   </div>
                 </div>
               )}
