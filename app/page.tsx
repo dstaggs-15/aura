@@ -91,8 +91,9 @@ const ProfileStyleShowcase = ({ p, pinnedPost, badges }: { p: any; pinnedPost: a
   )
 }
 
-const CommentInput = memo(({ postId, profile, profiles, onSubmit }: {
-  postId: number; profile: any; profiles: any[]; onSubmit: (postId: number, text: string) => Promise<boolean>
+const CommentInput = memo(({ postId, profile, profiles, onSubmit, parentCommentId = null, replyUsername = '' }: {
+  postId: number; profile: any; profiles: any[]; parentCommentId?: number | null; replyUsername?: string;
+  onSubmit: (postId: number, text: string, parentCommentId?: number | null) => Promise<boolean>
 }) => {
   const inputRef = useRef<HTMLInputElement>(null)
   const [mentionQuery, setMentionQuery] = useState<string | null>(null)
@@ -120,7 +121,7 @@ const CommentInput = memo(({ postId, profile, profiles, onSubmit }: {
   const handleSubmit = async () => {
     const text = inputRef.current?.value?.trim()
     if (!text) return
-    const posted = await onSubmit(postId, text)
+    const posted = await onSubmit(postId, text, parentCommentId)
     if (!posted) return
     if (inputRef.current) inputRef.current.value = ''
     setMentionQuery(null)
@@ -140,7 +141,7 @@ const CommentInput = memo(({ postId, profile, profiles, onSubmit }: {
             ))}
           </div>
         )}
-        <input ref={inputRef} type="text" placeholder="add a comment..." dir="ltr"
+        <input ref={inputRef} type="text" placeholder={replyUsername ? `reply to @${replyUsername}...` : "add a comment..."} dir="ltr"
           onChange={e => updateMentionQuery(e.target.value, e.target.selectionStart ?? e.target.value.length)}
           onKeyUp={e => { if (e.key !== 'Enter') updateMentionQuery(e.currentTarget.value, e.currentTarget.selectionStart ?? e.currentTarget.value.length) }}
           onKeyDown={e => { if (e.key === 'Enter' && suggestions.length === 0) handleSubmit() }}
@@ -171,7 +172,7 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
   onVote: (postId: number, val: number) => void; onCommentVote: (commentId: number, val: number) => void;
   onOpenProfile: (p: any) => void;
   onToggleComments: (postId: number) => void;
-  onComment: (postId: number, text: string) => Promise<boolean>;
+  onComment: (postId: number, text: string, parentCommentId?: number | null) => Promise<boolean>;
   onEdit: (postId: number, text: string) => Promise<boolean>;
 }) => {
   const owner = profiles.find((p: any) => p.id === post.user_id)
@@ -184,6 +185,7 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
   const [customVote, setCustomVote] = useState('')
   const [editingPost, setEditingPost] = useState(false)
   const [editText, setEditText] = useState(post.text)
+  const [replyingTo, setReplyingTo] = useState<number | null>(null)
 
   return (
     <Card style={{ marginBottom: 8 }}>
@@ -253,9 +255,9 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
                   }}>{v > 0 ? `+${v}` : v}</button>
                 )
               })}
-              <input value={customVote} inputMode="numeric" placeholder="custom" aria-label="Custom Aura vote"
+              <input value={customVote} inputMode="numeric" placeholder="Custom" aria-label="Custom Aura vote"
                 onChange={e => { if (/^-?\d*$/.test(e.target.value)) setCustomVote(e.target.value) }}
-                style={{ width: 66, padding: '4px 7px', borderRadius: 7, border: `1px solid ${S.border2}`, background: S.card2, color: S.text, fontSize: 11, fontFamily: 'monospace' }} />
+                style={{ width: 58, padding: '4px 6px', borderRadius: 7, border: `1px solid ${S.border2}`, background: S.card2, color: S.text, fontSize: 10, fontFamily: 'monospace', textAlign: 'center', letterSpacing: 0 }} />
               <button disabled={!customVote || Number(customVote) === 0 || Math.abs(Number(customVote)) > 100} onClick={() => { const v = Number(customVote); if (Number.isInteger(v) && v !== 0 && Math.abs(v) <= 100) onVote(post.id, v) }}
                 style={{ padding: '4px 8px', borderRadius: 7, fontSize: 10, fontWeight: 700, border: `1px solid ${S.border2}`, background: 'transparent', color: S.text2, cursor: 'pointer' }}>Vote</button>
             </div>
@@ -272,20 +274,41 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
         {isCommentsOpen && (
           <div style={{ padding: '0 16px 14px' }}>
             {comments.length === 0 && <p style={{ fontSize: 12, color: S.text3, marginBottom: 10 }}>No comments yet.</p>}
-            {comments.map((c: any) => {
+            {comments.filter((c: any) => !c.parent_comment_id).map((c: any) => {
               const cu = profiles.find((p: any) => p.id === c.user_id)
               if (!cu) return null
+              const replies = comments.filter((r: any) => r.parent_comment_id === c.id)
               return (
-                <div key={c.id} style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
-                  <Av p={cu} size={26} />
-                  <div style={{ flex: 1, background: S.card2, borderRadius: 10, padding: '8px 12px' }}>
-                    <div style={{ fontWeight: 600, fontSize: 12, color: usernameColor(cu), marginBottom: 3 }}>{cu.username}</div>
-                    {renderText(c.text, '#ccc')}
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 7 }}>
-                      <span style={{ fontFamily: 'monospace', fontSize: 11, fontWeight: 700, color: (c.aura || 0) >= 0 ? S.blue : S.red }}>{fmtAura(c.aura || 0)}</span>
-                      {cu.id !== profile.id && [-1, 1].map(v => <button key={v} onClick={() => onCommentVote(c.id, v)} style={{ padding: '2px 7px', borderRadius: 6, fontSize: 10, fontWeight: 700, border: `1px solid ${commentVotes[c.id] === v ? 'transparent' : S.border2}`, background: commentVotes[c.id] === v ? (v > 0 ? S.blue : S.red) : 'transparent', color: commentVotes[c.id] === v ? '#fff' : (v > 0 ? S.blue : S.red), cursor: 'pointer' }}>{v > 0 ? '+1' : '-1'}</button>)}
+                <div key={c.id} style={{ marginBottom: 10 }}>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <Av p={cu} size={26} />
+                    <div style={{ flex: 1, background: S.card2, borderRadius: 10, padding: '8px 12px' }}>
+                      <div style={{ fontWeight: 600, fontSize: 12, color: usernameColor(cu), marginBottom: 3 }}>{cu.username}</div>
+                      {renderText(c.text, '#ccc')}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 7 }}>
+                        <span style={{ fontFamily: 'monospace', fontSize: 11, fontWeight: 700, color: (c.aura || 0) >= 0 ? S.blue : S.red }}>{fmtAura(c.aura || 0)}</span>
+                        {cu.id !== profile.id && [-1, 1].map(v => <button key={v} onClick={() => onCommentVote(c.id, v)} style={{ padding: '2px 7px', borderRadius: 6, fontSize: 10, fontWeight: 700, border: `1px solid ${commentVotes[c.id] === v ? 'transparent' : S.border2}`, background: commentVotes[c.id] === v ? (v > 0 ? S.blue : S.red) : 'transparent', color: commentVotes[c.id] === v ? '#fff' : (v > 0 ? S.blue : S.red), cursor: 'pointer' }}>{v > 0 ? '+1' : '-1'}</button>)}
+                        <button onClick={() => setReplyingTo(replyingTo === c.id ? null : c.id)} style={{ padding: '2px 7px', borderRadius: 6, fontSize: 10, border: 'none', background: 'transparent', color: S.text3, cursor: 'pointer' }}>Reply</button>
+                      </div>
                     </div>
                   </div>
+                  {replies.map((r: any) => {
+                    const ru = profiles.find((p: any) => p.id === r.user_id)
+                    if (!ru) return null
+                    return <div key={r.id} style={{ display: 'flex', gap: 7, marginTop: 7, marginLeft: 34 }}>
+                      <Av p={ru} size={22} />
+                      <div style={{ flex: 1, background: '#1b1b1b', borderRadius: 9, padding: '7px 10px', borderLeft: `2px solid ${S.border2}` }}>
+                        <div style={{ fontWeight: 600, fontSize: 11, color: usernameColor(ru), marginBottom: 2 }}>{ru.username}</div>
+                        {renderText(r.text, '#ccc')}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginTop: 5 }}>
+                          <span style={{ fontFamily: 'monospace', fontSize: 10, fontWeight: 700, color: (r.aura || 0) >= 0 ? S.blue : S.red }}>{fmtAura(r.aura || 0)}</span>
+                          {ru.id !== profile.id && [-1, 1].map(v => <button key={v} onClick={() => onCommentVote(r.id, v)} style={{ padding: '1px 6px', borderRadius: 6, fontSize: 9, fontWeight: 700, border: `1px solid ${commentVotes[r.id] === v ? 'transparent' : S.border2}`, background: commentVotes[r.id] === v ? (v > 0 ? S.blue : S.red) : 'transparent', color: commentVotes[r.id] === v ? '#fff' : (v > 0 ? S.blue : S.red), cursor: 'pointer' }}>{v > 0 ? '+1' : '-1'}</button>)}
+                          <button onClick={() => setReplyingTo(replyingTo === c.id ? null : c.id)} style={{ padding: '1px 6px', borderRadius: 6, fontSize: 9, border: 'none', background: 'transparent', color: S.text3, cursor: 'pointer' }}>Reply</button>
+                        </div>
+                      </div>
+                    </div>
+                  })}
+                  {replyingTo === c.id && <div style={{ marginLeft: 34, marginTop: 7 }}><CommentInput postId={post.id} profile={profile} profiles={profiles} parentCommentId={c.id} replyUsername={cu.username} onSubmit={async (...args) => { const ok = await onComment(...args); if (ok) setReplyingTo(null); return ok }} /></div>}
                 </div>
               )
             })}
@@ -580,15 +603,19 @@ export default function Home() {
     }
   }
 
-  const handleComment = async (postId: number, text: string): Promise<boolean> => {
+  const handleComment = async (postId: number, text: string, parentCommentId: number | null = null): Promise<boolean> => {
     if (!profile || !text.trim()) return false
-    const { data, error } = await supabase.from('comments').insert({ post_id: postId, user_id: profile.id, text: text.trim() }).select('*').single()
+    const { data, error } = await supabase.from('comments').insert({ post_id: postId, user_id: profile.id, text: text.trim(), parent_comment_id: parentCommentId }).select('*').single()
     if (error) { notify(`Could not post comment: ${error.message}`, 'neg'); return false }
     if (data) {
       setComments(c => ({ ...c, [postId]: [...(c[postId] || []), data] }))
       setCommentCounts(c => ({ ...c, [postId]: (c[postId] || 0) + 1 }))
       // Re-read from the database so the open thread always matches the server.
       setTimeout(() => loadCommentsForPost(postId), 0)
+      if (parentCommentId) {
+        const { error: pushError } = await supabase.functions.invoke('send-new-post-push', { body: { reply_comment_id: data.id } })
+        if (pushError) console.warn('Reply push failed:', pushError.message)
+      }
       return true
     }
     return false
@@ -797,9 +824,9 @@ export default function Home() {
                         <button key={v} onClick={() => handleProfileVote(modalProfile.id, v)} style={{ padding: '5px 9px', borderRadius: 7, fontSize: 11, fontWeight: 700, fontFamily: 'monospace', cursor: 'pointer', border: `1px solid ${active ? 'transparent' : S.border2}`, background: active ? (neg ? S.red : S.blue) : S.card2, color: active ? '#fff' : (neg ? S.red : S.blue) }}>{v > 0 ? `+${v}` : v}</button>
                       )
                     })}
-                    <input value={profileCustomVote} inputMode="numeric" placeholder="custom" aria-label="Custom profile Aura vote"
+                    <input value={profileCustomVote} inputMode="numeric" placeholder="Custom" aria-label="Custom profile Aura vote"
                       onChange={e => { if (/^-?\d*$/.test(e.target.value)) setProfileCustomVote(e.target.value) }}
-                      style={{ width: 68, padding: '5px 7px', borderRadius: 7, border: `1px solid ${S.border2}`, background: S.card2, color: S.text, fontSize: 11, fontFamily: 'monospace' }} />
+                      style={{ width: 58, padding: '5px 6px', borderRadius: 7, border: `1px solid ${S.border2}`, background: S.card2, color: S.text, fontSize: 10, fontFamily: 'monospace', textAlign: 'center', letterSpacing: 0 }} />
                     <button disabled={!profileCustomVote || Number(profileCustomVote) === 0 || Math.abs(Number(profileCustomVote)) > 100}
                       onClick={() => { const v = Number(profileCustomVote); if (Number.isInteger(v) && v !== 0 && Math.abs(v) <= 100) handleProfileVote(modalProfile.id, v) }}
                       style={{ padding: '5px 9px', borderRadius: 7, fontSize: 10, fontWeight: 700, border: `1px solid ${S.border2}`, background: 'transparent', color: S.text2, cursor: 'pointer' }}>Vote</button>
