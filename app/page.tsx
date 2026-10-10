@@ -362,6 +362,8 @@ export default function Home() {
   const [openComments, setOpenComments] = useState<Record<number, boolean>>({})
   const [ledger, setLedger] = useState<LedgerEntry[]>([])
   const [showLedger, setShowLedger] = useState(false)
+  const [modalLedger, setModalLedger] = useState<LedgerEntry[]>([])
+  const [showModalLedger, setShowModalLedger] = useState(false)
   const [showCustomize, setShowCustomize] = useState(false)
   const [showAnnounce, setShowAnnounce] = useState(false)
   const [announceBusy, setAnnounceBusy] = useState(false)
@@ -713,6 +715,12 @@ export default function Home() {
     if (data) setLedger(data)
   }
 
+  const loadPublicLedger = async (userId: string) => {
+    const { data, error } = await supabase.from('aura_ledger').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(50)
+    if (error) { notify(error.message, 'neg'); return }
+    setModalLedger(data || [])
+  }
+
   const handleLogout = async () => {
     await supabase.auth.signOut()
     window.location.href = '/auth'
@@ -767,7 +775,7 @@ export default function Home() {
 
       {modalProfile && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)', zIndex: 200, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, backdropFilter: 'blur(4px)' }}
-          onClick={() => { setModalProfile(null); setEditingBio(false) }}>
+          onClick={() => { setModalProfile(null); setEditingBio(false); setShowModalLedger(false); setModalLedger([]) }}>
           <div onClick={e => e.stopPropagation()} style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 20, width: '100%', maxWidth: 440, maxHeight: '88vh', overflowY: 'auto' }}>
             <div style={{ height: 90, background: clownCount(modalProfile.aura) > 0 ? `repeating-linear-gradient(45deg,${S.redDim} 0,${S.redDim} 12px,${S.card} 12px,${S.card} 24px)` : `linear-gradient(135deg, ${S.blueDim}, ${S.card})`, backgroundImage: modalProfile.banner_url ? `url(${modalProfile.banner_url})` : undefined, backgroundSize: 'cover', backgroundPosition: 'center', borderRadius: '20px 20px 0 0', position: 'relative' }}>
               <button onClick={() => setModalProfile(null)} style={{ position: 'absolute', top: 12, right: 12, width: 30, height: 30, borderRadius: '50%', background: 'rgba(0,0,0,.5)', border: `1px solid ${S.border2}`, cursor: 'pointer', fontSize: 14, color: '#fff' }}>✕</button>
@@ -801,6 +809,33 @@ export default function Home() {
                   </div>
                 ))}
               </div>
+              <div style={{ marginBottom: 14 }}>
+                <button onClick={async () => {
+                  const next = !showModalLedger
+                  setShowModalLedger(next)
+                  if (next) await loadPublicLedger(modalProfile.id)
+                }} style={{ padding: '7px 14px', borderRadius: 9, border: `1px solid ${S.border2}`, background: showModalLedger ? S.blue : 'transparent', color: showModalLedger ? '#fff' : S.text2, cursor: 'pointer', fontWeight: 600 }}>
+                  📒 {showModalLedger ? 'Hide Ledger' : 'View Ledger'}
+                </button>
+              </div>
+              {showModalLedger && (
+                <div style={{ background: S.card2, border: `1px solid ${S.border}`, borderRadius: 12, padding: '4px 12px 8px', marginBottom: 16 }}>
+                  {modalLedger.length === 0 && <p style={{ fontSize: 12, color: S.text3, padding: '8px 0' }}>No transactions yet.</p>}
+                  {modalLedger.map(e => (
+                    <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, padding: '9px 0', borderBottom: `1px solid ${S.border}` }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 12, color: S.text, overflowWrap: 'anywhere' }}>{e.description}</div>
+                        <div style={{ fontSize: 10, color: S.text3, marginTop: 2 }}>{timeAgo(e.created_at)}</div>
+                      </div>
+                      <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                        <div style={{ fontFamily: 'monospace', fontSize: 12, fontWeight: 700, color: e.amount >= 0 ? S.blue : S.red }}>{e.amount >= 0 ? '+' : ''}{e.amount}</div>
+                        <div style={{ fontFamily: 'monospace', fontSize: 10, color: S.text3 }}>bal: {e.balance_after}</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {modalProfile.id !== profile.id && (() => {
                 const friendship = friendshipWith(modalProfile.id)
                 const incoming = friendship?.status === 'pending' && friendship.addressee_id === profile.id
@@ -1101,6 +1136,8 @@ export default function Home() {
             { title: '🔥 What is aura?', body: 'Your score on this site. Post something, people vote on it, your aura goes up or down. Simple.' },
             { title: '🗳️ Voting', body: 'Vote with presets including ±25, or type any whole-number vote from -100 to +100. Negative votes are free. Positive votes of +1 through +5 are free; above that, the cost is 1 aura per 10 vote power rounded up (so +25 costs 3 and +69 costs 7). Large votes of 50 or more still count toward anti-glaze limits.' },
             { title: '📣 Callouts', body: 'When making a post, turn on Call out, tag exactly one person, and choose 🙂 Good or 😡 Bad. The person being called out gets 100% of the Aura that post gains or loses. If voters push the post opposite your callout direction, the poster gets an equal false-callout penalty. If the vote swings back, that penalty adjusts back too.' },
+            { title: '👑 1,000+ Aura', body: 'Once you reach 1,000 Aura, positive gains are reduced by half: every +1 earned becomes +0.5. Negative Aura still hits at the normal full rate. If a gain crosses 1,000, only the portion above 1,000 is halved.' },
+            { title: '📒 Public ledgers', body: 'Aura ledgers are public to Aura members. Open anyone’s profile and tap View Ledger to see their recent Aura transactions.' },
             { title: '✏️ Post edits', body: 'You can edit each of your posts one time. After that one edit, the post is locked.' },
             { title: '📍 Tagging', body: 'When making a post, tap "Tag people" to tag someone in it. If your post gets votes, tagged people split a 50% bonus pool so tagging cannot multiply aura without limit. Tag people who are actually in the post.' },
             { title: '📊 Profile votes', body: "You can vote on someone's whole profile, not just their posts. Tap their name or avatar anywhere to pull up their profile and rate their vibe." },
