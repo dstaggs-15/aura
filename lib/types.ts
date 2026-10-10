@@ -27,6 +27,10 @@ export type Post = {
   image_url: string | null
   aura: number
   created_at: string
+  callout_target_id: string | null
+  callout_sentiment: 'good' | 'bad' | null
+  callout_penalty: number
+  edit_count: number
   profiles?: Profile
 }
 
