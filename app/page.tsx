@@ -325,6 +325,9 @@ export default function Home() {
   const [postImage, setPostImage] = useState<File | null>(null)
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [showTagPicker, setShowTagPicker] = useState(false)
+  const [calloutMode, setCalloutMode] = useState(false)
+  const [calloutSentiment, setCalloutSentiment] = useState<'good' | 'bad'>('good')
+  const [profileCustomVote, setProfileCustomVote] = useState('')
   const [taxBucket, setTaxBucket] = useState(0)
   const [toast, setToast] = useState<{ msg: string; type: string } | null>(null)
   const [modalProfile, setModalProfile] = useState<Profile | null>(null)
@@ -503,6 +506,10 @@ export default function Home() {
 
   const handlePost = async () => {
     if (!draftRef.current.trim() || !profile || posting) return
+    if (calloutMode && selectedTags.length !== 1) {
+      notify('A callout must tag exactly one person', 'neg')
+      return
+    }
     setPosting(true)
     let image_url = null
     if (postImage) {
@@ -512,7 +519,14 @@ export default function Home() {
       const { data: urlData } = supabase.storage.from('posts').getPublicUrl(path)
       image_url = urlData.publicUrl
     }
-    const { data, error: postError } = await supabase.from('posts').insert({ user_id: profile.id, text: draftRef.current.trim(), aura: 0, image_url }).select('*').single()
+    const { data, error: postError } = await supabase.from('posts').insert({
+      user_id: profile.id,
+      text: draftRef.current.trim(),
+      aura: 0,
+      image_url,
+      callout_target_id: calloutMode ? selectedTags[0] : null,
+      callout_sentiment: calloutMode ? calloutSentiment : null,
+    }).select('*').single()
     if (postError) { notify(`Could not post: ${postError.message}`, 'neg'); setPosting(false); return }
     if (data) {
       if (selectedTags.length > 0) {
@@ -525,12 +539,23 @@ export default function Home() {
       if (ta) ta.value = ''
       setPostImage(null)
       setSelectedTags([])
+      setCalloutMode(false)
+      setCalloutSentiment('good')
       setComposing(false)
       notify('Posted 🔥')
       const { error: pushError } = await supabase.functions.invoke('send-new-post-push', { body: { post_id: data.id } })
       if (pushError) console.warn('Push fanout failed:', pushError.message)
     }
     setPosting(false)
+  }
+
+  const handleEditPost = async (postId: number, text: string): Promise<boolean> => {
+    if (!profile || !text.trim()) return false
+    const { error } = await supabase.rpc('edit_my_post', { p_post_id: postId, p_text: text.trim() })
+    if (error) { notify(error.message, 'neg'); return false }
+    notify('Post edited — that was your one edit', 'pos')
+    await loadAll(profile.id)
+    return true
   }
 
   const handleAnnounce = async () => {
