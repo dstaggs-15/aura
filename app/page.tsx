@@ -834,6 +834,8 @@ export default function Home() {
           <span style={{ fontFamily: 'monospace', fontSize: 14, fontWeight: 700, color: profile.aura >= 0 ? S.blue : S.red }}>
             {clownCount(profile.aura) > 0 ? '🤡 ' : ''}{fmtAura(profile.aura)}
           </span>
+          <button title="Refresh Aura" aria-label="Refresh Aura" onClick={async () => { await loadAll(profile.id); notify('Refreshed', 'pos') }}
+            style={{ width: 34, height: 34, borderRadius: '50%', border: `1px solid ${S.border2}`, background: 'transparent', color: S.text2, fontSize: 17, cursor: 'pointer' }}>↻</button>
           <button onClick={handleCheckIn} disabled={checkedInToday} style={{ padding: '7px 14px', borderRadius: 20, fontSize: 12, fontWeight: 600, border: `1px solid ${checkedInToday ? S.border : S.blue}`, cursor: checkedInToday ? 'default' : 'pointer', background: checkedInToday ? 'transparent' : S.blue, color: checkedInToday ? S.text3 : '#fff' }}>
             {checkedInToday ? '✓ Checked in' : '🔥 Check in'}
           </button>
@@ -1070,7 +1072,9 @@ export default function Home() {
         {tab === 'help' && <>
           {[
             { title: '🔥 What is aura?', body: 'Your score on this site. Post something, people vote on it, your aura goes up or down. Simple.' },
-            { title: '🗳️ Voting', body: 'Vote +1 to +50 or negative on any post. Positive votes cost aura: +1 and +5 are free, +10 costs 1, and +50 costs 5. Changing a vote only charges or refunds the difference. Negative votes are free.' },
+            { title: '🗳️ Voting', body: 'Vote with presets including ±25, or type any whole-number vote from -100 to +100. Negative votes are free. Positive votes of +1 through +5 are free; above that, the cost is 1 aura per 10 vote power rounded up (so +25 costs 3 and +69 costs 7). Large votes of 50 or more still count toward anti-glaze limits.' },
+            { title: '📣 Callouts', body: 'When making a post, turn on Call out, tag exactly one person, and choose 🙂 Good or 😡 Bad. The person being called out gets 100% of the Aura that post gains or loses. If voters push the post opposite your callout direction, the poster gets an equal false-callout penalty. If the vote swings back, that penalty adjusts back too.' },
+            { title: '✏️ Post edits', body: 'You can edit each of your posts one time. After that one edit, the post is locked.' },
             { title: '📍 Tagging', body: 'When making a post, tap "Tag people" to tag someone in it. If your post gets votes, tagged people split a 50% bonus pool so tagging cannot multiply aura without limit. Tag people who are actually in the post.' },
             { title: '📊 Profile votes', body: "You can vote on someone's whole profile, not just their posts. Tap their name or avatar anywhere to pull up their profile and rate their vibe." },
             { title: '🤡 Negative aura', body: 'Drop below 0 and clown emojis start showing on your profile. Clown mode now has escalating tiers: Clown, Big Clown, and Mega Clown. Positive gains are taxed 25%, 35%, or 50% into the prize pool, while negative users get a larger daily comeback check-in.' },
@@ -1289,7 +1293,7 @@ export default function Home() {
                 comments={comments[p.id] || []} commentCount={commentCounts[p.id] || 0}
                 isCommentsOpen={openComments[p.id] || false} tags={postTags[p.id] || []} commentVotes={commentVotes} postVotes={allPostVotes.filter(v => v.post_id === p.id)}
                 onVote={handleVote} onCommentVote={handleCommentVote} onOpenProfile={setModalProfile}
-                onToggleComments={handleToggleComments} onComment={handleComment} />
+                onToggleComments={handleToggleComments} onComment={handleComment} onEdit={handleEditPost} />
             ))
           }
         </>}
