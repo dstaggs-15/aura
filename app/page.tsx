@@ -180,7 +180,10 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
   const isOwn = post.user_id === profile?.id
   const cc = clownCount(owner.aura)
   const taggedUsers = tags.map(id => profiles.find((p: any) => p.id === id)).filter(Boolean)
-  const calloutTarget = post.callout_target_id ? profiles.find((p: any) => p.id === post.callout_target_id) : null
+  const fallbackCalloutTarget = post.callout_target_id ? profiles.find((p: any) => p.id === post.callout_target_id) : null
+  const calloutTargets = post.callout_sentiment
+    ? (taggedUsers.length > 0 ? taggedUsers : (fallbackCalloutTarget ? [fallbackCalloutTarget] : []))
+    : []
   const [showVotes, setShowVotes] = useState(false)
   const [customVote, setCustomVote] = useState('')
   const [editingPost, setEditingPost] = useState(false)
@@ -212,9 +215,9 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
               </div>
             </div>
           ) : renderText(post.text)}
-          {calloutTarget && (
+          {calloutTargets.length > 0 && (
             <div style={{ marginTop: 9, padding: '7px 10px', borderRadius: 9, background: post.callout_sentiment === 'good' ? '#12351d' : S.redDim, border: `1px solid ${post.callout_sentiment === 'good' ? '#205f34' : S.red}`, fontSize: 11, fontWeight: 700, color: post.callout_sentiment === 'good' ? '#98e8ae' : '#ffb4b4' }}>
-              {post.callout_sentiment === 'good' ? '🙂 GOOD CALLOUT' : '😡 BAD CALLOUT'} → @{calloutTarget.username} gets all Aura from this post
+              {post.callout_sentiment === 'good' ? '🙂 GOOD CALLOUT' : '😡 BAD CALLOUT'} → {calloutTargets.map((u: any) => `@${u.username}`).join(', ')} split all Aura from this post
               {Number(post.callout_penalty || 0) > 0 && <span> · poster penalty {fmtAura(-Number(post.callout_penalty))}</span>}
             </div>
           )}
@@ -531,8 +534,8 @@ export default function Home() {
 
   const handlePost = async () => {
     if (!draftRef.current.trim() || !profile || posting) return
-    if (calloutMode && selectedTags.length !== 1) {
-      notify('A callout must tag exactly one person', 'neg')
+    if (calloutMode && selectedTags.length < 1) {
+      notify('A callout must tag at least one person', 'neg')
       return
     }
     setPosting(true)
@@ -956,7 +959,7 @@ export default function Home() {
                 </div>
               )}
               <div style={{ marginBottom: 10 }}>
-                <button onClick={() => { setCalloutMode(v => !v); setShowTagPicker(true); if (selectedTags.length > 1) setSelectedTags(selectedTags.slice(0,1)) }}
+                <button onClick={() => { setCalloutMode(v => !v); setShowTagPicker(true) }}
                   style={{ padding: '7px 11px', borderRadius: 9, border: `1px solid ${calloutMode ? S.fire : S.border2}`, background: calloutMode ? '#2a1b12' : 'transparent', color: calloutMode ? S.fire : S.text2, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
                   📣 {calloutMode ? 'Call out ON' : 'Call out'}
                 </button>
@@ -965,7 +968,7 @@ export default function Home() {
                     <span style={{ fontSize: 11, color: S.text3 }}>What kind of callout?</span>
                     <button onClick={() => setCalloutSentiment('good')} style={{ padding: '6px 10px', borderRadius: 8, border: `1px solid ${calloutSentiment === 'good' ? '#22c55e' : S.border2}`, background: calloutSentiment === 'good' ? '#12351d' : 'transparent', color: calloutSentiment === 'good' ? '#98e8ae' : S.text2, cursor: 'pointer' }}>🙂 Good</button>
                     <button onClick={() => setCalloutSentiment('bad')} style={{ padding: '6px 10px', borderRadius: 8, border: `1px solid ${calloutSentiment === 'bad' ? S.red : S.border2}`, background: calloutSentiment === 'bad' ? S.redDim : 'transparent', color: calloutSentiment === 'bad' ? '#ffb4b4' : S.text2, cursor: 'pointer' }}>😡 Bad</button>
-                    <span style={{ fontSize: 10, color: S.text3 }}>Tag exactly one person. They get 100% of this post’s Aura.</span>
+                    <span style={{ fontSize: 10, color: S.text3 }}>Tag one or more people. They split 100% of this post’s Aura evenly.</span>
                   </div>
                 )}
               </div>
@@ -989,7 +992,7 @@ export default function Home() {
                 </div>
                 {showTagPicker && (
                   <TagPicker profiles={otherProfiles} selected={selectedTags}
-                    onToggle={id => setSelectedTags(t => calloutMode ? (t.includes(id) ? [] : [id]) : (t.includes(id) ? t.filter(x => x !== id) : [...t, id]))} />
+                    onToggle={id => setSelectedTags(t => t.includes(id) ? t.filter(x => x !== id) : [...t, id])} />
                 )}
               </div>
             </Card>
@@ -1140,7 +1143,7 @@ export default function Home() {
           {[
             { title: '🔥 What is aura?', body: 'Your score on this site. Post something, people vote on it, your aura goes up or down. Simple.' },
             { title: '🗳️ Voting', body: 'Vote with presets including ±25, or type any whole-number vote from -100 to +100. Negative votes are free. Positive votes of +1 through +5 are free; above that, the cost is 1 aura per 10 vote power rounded up (so +25 costs 3 and +69 costs 7). Large votes of 50 or more still count toward anti-glaze limits.' },
-            { title: '📣 Callouts', body: 'When making a post, turn on Call out, tag exactly one person, and choose 🙂 Good or 😡 Bad. The person being called out gets 100% of the Aura that post gains or loses. If voters push the post opposite your callout direction, the poster gets an equal false-callout penalty. If the vote swings back, that penalty adjusts back too.' },
+            { title: '📣 Callouts', body: 'When making a post, turn on Call out, tag one or more people, and choose 🙂 Good or 😡 Bad. The called-out people split 100% of the Aura that post gains or loses. If voters push the post opposite your callout direction, the poster gets an equal false-callout penalty. If the vote swings back, that penalty adjusts back too.' },
             { title: '👑 1,000+ Aura', body: 'Once you reach 1,000 Aura, positive gains are reduced by half: every +1 earned becomes +0.5. Negative Aura still hits at the normal full rate. If a gain crosses 1,000, only the portion above 1,000 is halved.' },
             { title: '📒 Public ledgers', body: 'Aura ledgers are public to Aura members. Open anyone’s profile and tap View Ledger to see their recent Aura transactions.' },
             { title: '✏️ Post edits', body: 'You can edit each of your posts one time. After that one edit, the post is locked.' },
