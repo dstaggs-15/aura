@@ -715,6 +715,11 @@ export default function Home() {
     if (data) setLedger(data)
   }
 
+  useEffect(() => {
+    setShowModalLedger(false)
+    setModalLedger([])
+  }, [modalProfile?.id])
+
   const loadPublicLedger = async (userId: string) => {
     const { data, error } = await supabase.from('aura_ledger').select('*').eq('user_id', userId).order('created_at', { ascending: false }).limit(50)
     if (error) { notify(error.message, 'neg'); return }
@@ -778,7 +783,7 @@ export default function Home() {
           onClick={() => { setModalProfile(null); setEditingBio(false); setShowModalLedger(false); setModalLedger([]) }}>
           <div onClick={e => e.stopPropagation()} style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 20, width: '100%', maxWidth: 440, maxHeight: '88vh', overflowY: 'auto' }}>
             <div style={{ height: 90, background: clownCount(modalProfile.aura) > 0 ? `repeating-linear-gradient(45deg,${S.redDim} 0,${S.redDim} 12px,${S.card} 12px,${S.card} 24px)` : `linear-gradient(135deg, ${S.blueDim}, ${S.card})`, backgroundImage: modalProfile.banner_url ? `url(${modalProfile.banner_url})` : undefined, backgroundSize: 'cover', backgroundPosition: 'center', borderRadius: '20px 20px 0 0', position: 'relative' }}>
-              <button onClick={() => setModalProfile(null)} style={{ position: 'absolute', top: 12, right: 12, width: 30, height: 30, borderRadius: '50%', background: 'rgba(0,0,0,.5)', border: `1px solid ${S.border2}`, cursor: 'pointer', fontSize: 14, color: '#fff' }}>✕</button>
+              <button onClick={() => { setModalProfile(null); setShowModalLedger(false); setModalLedger([]) }} style={{ position: 'absolute', top: 12, right: 12, width: 30, height: 30, borderRadius: '50%', background: 'rgba(0,0,0,.5)', border: `1px solid ${S.border2}`, cursor: 'pointer', fontSize: 14, color: '#fff' }}>✕</button>
             </div>
             <div style={{ padding: '0 20px 24px', marginTop: -22 }}>
               <Av p={modalProfile} size={54} />
