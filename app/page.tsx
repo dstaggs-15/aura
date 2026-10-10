@@ -165,20 +165,25 @@ const renderText = (text: string, color = '#ccc') => {
   )
 }
 
-const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount, isCommentsOpen, tags, commentVotes, postVotes, onVote, onCommentVote, onOpenProfile, onToggleComments, onComment }: {
+const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount, isCommentsOpen, tags, commentVotes, postVotes, onVote, onCommentVote, onOpenProfile, onToggleComments, onComment, onEdit }: {
   post: any; profile: any; profiles: any[]; myVote: number | undefined;
   comments: any[]; commentCount: number; isCommentsOpen: boolean; tags: string[]; commentVotes: Record<number, number>; postVotes: any[];
   onVote: (postId: number, val: number) => void; onCommentVote: (commentId: number, val: number) => void;
   onOpenProfile: (p: any) => void;
   onToggleComments: (postId: number) => void;
   onComment: (postId: number, text: string) => Promise<boolean>;
+  onEdit: (postId: number, text: string) => Promise<boolean>;
 }) => {
   const owner = profiles.find((p: any) => p.id === post.user_id)
   if (!owner) return null
   const isOwn = post.user_id === profile?.id
   const cc = clownCount(owner.aura)
   const taggedUsers = tags.map(id => profiles.find((p: any) => p.id === id)).filter(Boolean)
+  const calloutTarget = post.callout_target_id ? profiles.find((p: any) => p.id === post.callout_target_id) : null
   const [showVotes, setShowVotes] = useState(false)
+  const [customVote, setCustomVote] = useState('')
+  const [editingPost, setEditingPost] = useState(false)
+  const [editText, setEditText] = useState(post.text)
 
   return (
     <Card style={{ marginBottom: 8 }}>
@@ -195,7 +200,22 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
             {owner.streak >= 3 && <span style={{ fontSize: 12, color: S.fire }}>🔥{owner.streak}</span>}
             <span style={{ fontSize: 11, color: S.text3, marginLeft: 'auto' }}>{timeAgo(post.created_at)}</span>
           </div>
-          {renderText(post.text)}
+          {editingPost ? (
+            <div>
+              <textarea value={editText} onChange={e => setEditText(e.target.value)} rows={3} maxLength={2000}
+                style={{ width: '100%', border: `1px solid ${S.border2}`, borderRadius: 10, padding: '9px 11px', fontSize: 16, background: S.card2, color: S.text, lineHeight: 1.5, resize: 'vertical', fontFamily: 'inherit', outline: 'none' }} />
+              <div style={{ display: 'flex', gap: 7, marginTop: 7 }}>
+                <button onClick={async () => { if (await onEdit(post.id, editText)) setEditingPost(false) }} style={{ padding: '5px 11px', borderRadius: 7, border: 'none', background: S.blue, color: '#fff', fontSize: 11, cursor: 'pointer' }}>Save edit</button>
+                <button onClick={() => { setEditingPost(false); setEditText(post.text) }} style={{ padding: '5px 11px', borderRadius: 7, border: `1px solid ${S.border2}`, background: 'transparent', color: S.text2, fontSize: 11, cursor: 'pointer' }}>Cancel</button>
+              </div>
+            </div>
+          ) : renderText(post.text)}
+          {calloutTarget && (
+            <div style={{ marginTop: 9, padding: '7px 10px', borderRadius: 9, background: post.callout_sentiment === 'good' ? '#12351d' : S.redDim, border: `1px solid ${post.callout_sentiment === 'good' ? '#205f34' : S.red}`, fontSize: 11, fontWeight: 700, color: post.callout_sentiment === 'good' ? '#98e8ae' : '#ffb4b4' }}>
+              {post.callout_sentiment === 'good' ? '🙂 GOOD CALLOUT' : '😡 BAD CALLOUT'} → @{calloutTarget.username} gets all Aura from this post
+              {Number(post.callout_penalty || 0) > 0 && <span> · poster penalty {fmtAura(-Number(post.callout_penalty))}</span>}
+            </div>
+          )}
           {taggedUsers.length > 0 && (
             <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 8 }}>
               {taggedUsers.map((u: any) => (
@@ -214,8 +234,12 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
       <div style={{ padding: '10px 16px 12px', borderTop: `1px solid ${S.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
         <button onClick={() => setShowVotes(!showVotes)} style={{ background: 'transparent', border: 'none', padding: 0, fontFamily: 'monospace', fontSize: 14, fontWeight: 700, color: post.aura >= 0 ? S.blue : S.red, cursor: 'pointer' }}>{fmtAura(post.aura)}</button>
         {isOwn
-          ? <span style={{ fontSize: 11, color: S.text3 }}>your post</span>
-          : <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          ? <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+              <span style={{ fontSize: 11, color: S.text3 }}>your post</span>
+              {Number(post.edit_count || 0) === 0 && !editingPost && <button onClick={() => { setEditText(post.text); setEditingPost(true) }} style={{ padding: '4px 8px', borderRadius: 7, border: `1px solid ${S.border2}`, background: 'transparent', color: S.text2, fontSize: 10, cursor: 'pointer' }}>✏️ Edit once</button>}
+              {Number(post.edit_count || 0) > 0 && <span style={{ fontSize: 10, color: S.text3 }}>edited</span>}
+            </div>
+          : <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'center' }}>
               {VOTE_OPTS.map(v => {
                 const active = myVote === v
                 const neg = v < 0
@@ -229,6 +253,11 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
                   }}>{v > 0 ? `+${v}` : v}</button>
                 )
               })}
+              <input value={customVote} inputMode="numeric" placeholder="custom" aria-label="Custom Aura vote"
+                onChange={e => { if (/^-?\d*$/.test(e.target.value)) setCustomVote(e.target.value) }}
+                style={{ width: 66, padding: '4px 7px', borderRadius: 7, border: `1px solid ${S.border2}`, background: S.card2, color: S.text, fontSize: 11, fontFamily: 'monospace' }} />
+              <button disabled={!customVote || Number(customVote) === 0 || Math.abs(Number(customVote)) > 100} onClick={() => { const v = Number(customVote); if (Number.isInteger(v) && v !== 0 && Math.abs(v) <= 100) onVote(post.id, v) }}
+                style={{ padding: '4px 8px', borderRadius: 7, fontSize: 10, fontWeight: 700, border: `1px solid ${S.border2}`, background: 'transparent', color: S.text2, cursor: 'pointer' }}>Vote</button>
             </div>
         }
       </div>
