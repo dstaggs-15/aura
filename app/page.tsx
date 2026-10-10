@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, memo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Profile, Post, Comment, LedgerEntry, Friendship } from '@/lib/types'
 
-const VOTE_OPTS = [-50, -10, -5, -1, 1, 5, 10, 50]
+const VOTE_OPTS = [-50, -25, -10, -5, -1, 1, 5, 10, 25, 50]
 const fmtAura = (n: number) => (n >= 0 ? "+" : "") + n.toLocaleString()
 const clownCount = (a: number) => a < -499 ? 3 : a < -99 ? 2 : a < 0 ? 1 : 0
 const clownTitle = (a: number) => a <= -500 ? 'Mega Clown' : a <= -100 ? 'Big Clown' : a < 0 ? 'Clown' : null
@@ -165,20 +165,25 @@ const renderText = (text: string, color = '#ccc') => {
   )
 }
 
-const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount, isCommentsOpen, tags, commentVotes, postVotes, onVote, onCommentVote, onOpenProfile, onToggleComments, onComment }: {
+const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount, isCommentsOpen, tags, commentVotes, postVotes, onVote, onCommentVote, onOpenProfile, onToggleComments, onComment, onEdit }: {
   post: any; profile: any; profiles: any[]; myVote: number | undefined;
   comments: any[]; commentCount: number; isCommentsOpen: boolean; tags: string[]; commentVotes: Record<number, number>; postVotes: any[];
   onVote: (postId: number, val: number) => void; onCommentVote: (commentId: number, val: number) => void;
   onOpenProfile: (p: any) => void;
   onToggleComments: (postId: number) => void;
   onComment: (postId: number, text: string) => Promise<boolean>;
+  onEdit: (postId: number, text: string) => Promise<boolean>;
 }) => {
   const owner = profiles.find((p: any) => p.id === post.user_id)
   if (!owner) return null
   const isOwn = post.user_id === profile?.id
   const cc = clownCount(owner.aura)
   const taggedUsers = tags.map(id => profiles.find((p: any) => p.id === id)).filter(Boolean)
+  const calloutTarget = post.callout_target_id ? profiles.find((p: any) => p.id === post.callout_target_id) : null
   const [showVotes, setShowVotes] = useState(false)
+  const [customVote, setCustomVote] = useState('')
+  const [editingPost, setEditingPost] = useState(false)
+  const [editText, setEditText] = useState(post.text)
 
   return (
     <Card style={{ marginBottom: 8 }}>
@@ -195,7 +200,22 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
             {owner.streak >= 3 && <span style={{ fontSize: 12, color: S.fire }}>🔥{owner.streak}</span>}
             <span style={{ fontSize: 11, color: S.text3, marginLeft: 'auto' }}>{timeAgo(post.created_at)}</span>
           </div>
-          {renderText(post.text)}
+          {editingPost ? (
+            <div>
+              <textarea value={editText} onChange={e => setEditText(e.target.value)} rows={3} maxLength={2000}
+                style={{ width: '100%', border: `1px solid ${S.border2}`, borderRadius: 10, padding: '9px 11px', fontSize: 16, background: S.card2, color: S.text, lineHeight: 1.5, resize: 'vertical', fontFamily: 'inherit', outline: 'none' }} />
+              <div style={{ display: 'flex', gap: 7, marginTop: 7 }}>
+                <button onClick={async () => { if (await onEdit(post.id, editText)) setEditingPost(false) }} style={{ padding: '5px 11px', borderRadius: 7, border: 'none', background: S.blue, color: '#fff', fontSize: 11, cursor: 'pointer' }}>Save edit</button>
+                <button onClick={() => { setEditingPost(false); setEditText(post.text) }} style={{ padding: '5px 11px', borderRadius: 7, border: `1px solid ${S.border2}`, background: 'transparent', color: S.text2, fontSize: 11, cursor: 'pointer' }}>Cancel</button>
+              </div>
+            </div>
+          ) : renderText(post.text)}
+          {calloutTarget && (
+            <div style={{ marginTop: 9, padding: '7px 10px', borderRadius: 9, background: post.callout_sentiment === 'good' ? '#12351d' : S.redDim, border: `1px solid ${post.callout_sentiment === 'good' ? '#205f34' : S.red}`, fontSize: 11, fontWeight: 700, color: post.callout_sentiment === 'good' ? '#98e8ae' : '#ffb4b4' }}>
+              {post.callout_sentiment === 'good' ? '🙂 GOOD CALLOUT' : '😡 BAD CALLOUT'} → @{calloutTarget.username} gets all Aura from this post
+              {Number(post.callout_penalty || 0) > 0 && <span> · poster penalty {fmtAura(-Number(post.callout_penalty))}</span>}
+            </div>
+          )}
           {taggedUsers.length > 0 && (
             <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 8 }}>
               {taggedUsers.map((u: any) => (
@@ -214,8 +234,12 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
       <div style={{ padding: '10px 16px 12px', borderTop: `1px solid ${S.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
         <button onClick={() => setShowVotes(!showVotes)} style={{ background: 'transparent', border: 'none', padding: 0, fontFamily: 'monospace', fontSize: 14, fontWeight: 700, color: post.aura >= 0 ? S.blue : S.red, cursor: 'pointer' }}>{fmtAura(post.aura)}</button>
         {isOwn
-          ? <span style={{ fontSize: 11, color: S.text3 }}>your post</span>
-          : <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+          ? <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+              <span style={{ fontSize: 11, color: S.text3 }}>your post</span>
+              {Number(post.edit_count || 0) === 0 && !editingPost && <button onClick={() => { setEditText(post.text); setEditingPost(true) }} style={{ padding: '4px 8px', borderRadius: 7, border: `1px solid ${S.border2}`, background: 'transparent', color: S.text2, fontSize: 10, cursor: 'pointer' }}>✏️ Edit once</button>}
+              {Number(post.edit_count || 0) > 0 && <span style={{ fontSize: 10, color: S.text3 }}>edited</span>}
+            </div>
+          : <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end', alignItems: 'center' }}>
               {VOTE_OPTS.map(v => {
                 const active = myVote === v
                 const neg = v < 0
@@ -229,6 +253,11 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
                   }}>{v > 0 ? `+${v}` : v}</button>
                 )
               })}
+              <input value={customVote} inputMode="numeric" placeholder="custom" aria-label="Custom Aura vote"
+                onChange={e => { if (/^-?\d*$/.test(e.target.value)) setCustomVote(e.target.value) }}
+                style={{ width: 66, padding: '4px 7px', borderRadius: 7, border: `1px solid ${S.border2}`, background: S.card2, color: S.text, fontSize: 11, fontFamily: 'monospace' }} />
+              <button disabled={!customVote || Number(customVote) === 0 || Math.abs(Number(customVote)) > 100} onClick={() => { const v = Number(customVote); if (Number.isInteger(v) && v !== 0 && Math.abs(v) <= 100) onVote(post.id, v) }}
+                style={{ padding: '4px 8px', borderRadius: 7, fontSize: 10, fontWeight: 700, border: `1px solid ${S.border2}`, background: 'transparent', color: S.text2, cursor: 'pointer' }}>Vote</button>
             </div>
         }
       </div>
@@ -296,6 +325,9 @@ export default function Home() {
   const [postImage, setPostImage] = useState<File | null>(null)
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [showTagPicker, setShowTagPicker] = useState(false)
+  const [calloutMode, setCalloutMode] = useState(false)
+  const [calloutSentiment, setCalloutSentiment] = useState<'good' | 'bad'>('good')
+  const [profileCustomVote, setProfileCustomVote] = useState('')
   const [taxBucket, setTaxBucket] = useState(0)
   const [toast, setToast] = useState<{ msg: string; type: string } | null>(null)
   const [modalProfile, setModalProfile] = useState<Profile | null>(null)
@@ -474,6 +506,10 @@ export default function Home() {
 
   const handlePost = async () => {
     if (!draftRef.current.trim() || !profile || posting) return
+    if (calloutMode && selectedTags.length !== 1) {
+      notify('A callout must tag exactly one person', 'neg')
+      return
+    }
     setPosting(true)
     let image_url = null
     if (postImage) {
@@ -483,7 +519,14 @@ export default function Home() {
       const { data: urlData } = supabase.storage.from('posts').getPublicUrl(path)
       image_url = urlData.publicUrl
     }
-    const { data, error: postError } = await supabase.from('posts').insert({ user_id: profile.id, text: draftRef.current.trim(), aura: 0, image_url }).select('*').single()
+    const { data, error: postError } = await supabase.from('posts').insert({
+      user_id: profile.id,
+      text: draftRef.current.trim(),
+      aura: 0,
+      image_url,
+      callout_target_id: calloutMode ? selectedTags[0] : null,
+      callout_sentiment: calloutMode ? calloutSentiment : null,
+    }).select('*').single()
     if (postError) { notify(`Could not post: ${postError.message}`, 'neg'); setPosting(false); return }
     if (data) {
       if (selectedTags.length > 0) {
@@ -496,12 +539,23 @@ export default function Home() {
       if (ta) ta.value = ''
       setPostImage(null)
       setSelectedTags([])
+      setCalloutMode(false)
+      setCalloutSentiment('good')
       setComposing(false)
       notify('Posted 🔥')
       const { error: pushError } = await supabase.functions.invoke('send-new-post-push', { body: { post_id: data.id } })
       if (pushError) console.warn('Push fanout failed:', pushError.message)
     }
     setPosting(false)
+  }
+
+  const handleEditPost = async (postId: number, text: string): Promise<boolean> => {
+    if (!profile || !text.trim()) return false
+    const { error } = await supabase.rpc('edit_my_post', { p_post_id: postId, p_text: text.trim() })
+    if (error) { notify(error.message, 'neg'); return false }
+    notify('Post edited — that was your one edit', 'pos')
+    await loadAll(profile.id)
+    return true
   }
 
   const handleAnnounce = async () => {
@@ -743,6 +797,12 @@ export default function Home() {
                         <button key={v} onClick={() => handleProfileVote(modalProfile.id, v)} style={{ padding: '5px 9px', borderRadius: 7, fontSize: 11, fontWeight: 700, fontFamily: 'monospace', cursor: 'pointer', border: `1px solid ${active ? 'transparent' : S.border2}`, background: active ? (neg ? S.red : S.blue) : S.card2, color: active ? '#fff' : (neg ? S.red : S.blue) }}>{v > 0 ? `+${v}` : v}</button>
                       )
                     })}
+                    <input value={profileCustomVote} inputMode="numeric" placeholder="custom" aria-label="Custom profile Aura vote"
+                      onChange={e => { if (/^-?\d*$/.test(e.target.value)) setProfileCustomVote(e.target.value) }}
+                      style={{ width: 68, padding: '5px 7px', borderRadius: 7, border: `1px solid ${S.border2}`, background: S.card2, color: S.text, fontSize: 11, fontFamily: 'monospace' }} />
+                    <button disabled={!profileCustomVote || Number(profileCustomVote) === 0 || Math.abs(Number(profileCustomVote)) > 100}
+                      onClick={() => { const v = Number(profileCustomVote); if (Number.isInteger(v) && v !== 0 && Math.abs(v) <= 100) handleProfileVote(modalProfile.id, v) }}
+                      style={{ padding: '5px 9px', borderRadius: 7, fontSize: 10, fontWeight: 700, border: `1px solid ${S.border2}`, background: 'transparent', color: S.text2, cursor: 'pointer' }}>Vote</button>
                   </div>
                 </div>
               )}
@@ -774,6 +834,8 @@ export default function Home() {
           <span style={{ fontFamily: 'monospace', fontSize: 14, fontWeight: 700, color: profile.aura >= 0 ? S.blue : S.red }}>
             {clownCount(profile.aura) > 0 ? '🤡 ' : ''}{fmtAura(profile.aura)}
           </span>
+          <button title="Refresh Aura" aria-label="Refresh Aura" onClick={async () => { await loadAll(profile.id); notify('Refreshed', 'pos') }}
+            style={{ width: 34, height: 34, borderRadius: '50%', border: `1px solid ${S.border2}`, background: 'transparent', color: S.text2, fontSize: 17, cursor: 'pointer' }}>↻</button>
           <button onClick={handleCheckIn} disabled={checkedInToday} style={{ padding: '7px 14px', borderRadius: 20, fontSize: 12, fontWeight: 600, border: `1px solid ${checkedInToday ? S.border : S.blue}`, cursor: checkedInToday ? 'default' : 'pointer', background: checkedInToday ? 'transparent' : S.blue, color: checkedInToday ? S.text3 : '#fff' }}>
             {checkedInToday ? '✓ Checked in' : '🔥 Check in'}
           </button>
@@ -826,6 +888,20 @@ export default function Home() {
                   })}
                 </div>
               )}
+              <div style={{ marginBottom: 10 }}>
+                <button onClick={() => { setCalloutMode(v => !v); setShowTagPicker(true); if (selectedTags.length > 1) setSelectedTags(selectedTags.slice(0,1)) }}
+                  style={{ padding: '7px 11px', borderRadius: 9, border: `1px solid ${calloutMode ? S.fire : S.border2}`, background: calloutMode ? '#2a1b12' : 'transparent', color: calloutMode ? S.fire : S.text2, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                  📣 {calloutMode ? 'Call out ON' : 'Call out'}
+                </button>
+                {calloutMode && (
+                  <div style={{ display: 'flex', gap: 7, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 11, color: S.text3 }}>What kind of callout?</span>
+                    <button onClick={() => setCalloutSentiment('good')} style={{ padding: '6px 10px', borderRadius: 8, border: `1px solid ${calloutSentiment === 'good' ? '#22c55e' : S.border2}`, background: calloutSentiment === 'good' ? '#12351d' : 'transparent', color: calloutSentiment === 'good' ? '#98e8ae' : S.text2, cursor: 'pointer' }}>🙂 Good</button>
+                    <button onClick={() => setCalloutSentiment('bad')} style={{ padding: '6px 10px', borderRadius: 8, border: `1px solid ${calloutSentiment === 'bad' ? S.red : S.border2}`, background: calloutSentiment === 'bad' ? S.redDim : 'transparent', color: calloutSentiment === 'bad' ? '#ffb4b4' : S.text2, cursor: 'pointer' }}>😡 Bad</button>
+                    <span style={{ fontSize: 10, color: S.text3 }}>Tag exactly one person. They get 100% of this post’s Aura.</span>
+                  </div>
+                )}
+              </div>
               <div style={{ position: 'relative' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', gap: 8 }}>
@@ -838,7 +914,7 @@ export default function Home() {
                     </button>
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <button onClick={() => { setComposing(false); draftRef.current = ''; setPostImage(null); setSelectedTags([]) }} style={{ padding: '7px 16px', borderRadius: 10, fontSize: 13, border: `1px solid ${S.border2}`, background: 'transparent', color: S.text2, cursor: 'pointer' }}>Cancel</button>
+                    <button onClick={() => { setComposing(false); draftRef.current = ''; setPostImage(null); setSelectedTags([]); setCalloutMode(false); setCalloutSentiment('good') }} style={{ padding: '7px 16px', borderRadius: 10, fontSize: 13, border: `1px solid ${S.border2}`, background: 'transparent', color: S.text2, cursor: 'pointer' }}>Cancel</button>
                     <button onClick={handlePost} disabled={posting} style={{ padding: '7px 18px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: 'none', background: posting ? S.border : S.blue, color: posting ? S.text3 : '#fff', cursor: posting ? 'default' : 'pointer' }}>
                       {posting ? '...' : 'Post'}
                     </button>
@@ -846,7 +922,7 @@ export default function Home() {
                 </div>
                 {showTagPicker && (
                   <TagPicker profiles={otherProfiles} selected={selectedTags}
-                    onToggle={id => setSelectedTags(t => t.includes(id) ? t.filter(x => x !== id) : [...t, id])} />
+                    onToggle={id => setSelectedTags(t => calloutMode ? (t.includes(id) ? [] : [id]) : (t.includes(id) ? t.filter(x => x !== id) : [...t, id]))} />
                 )}
               </div>
             </Card>
@@ -869,7 +945,7 @@ export default function Home() {
               comments={comments[p.id] || []} commentCount={commentCounts[p.id] || 0}
               isCommentsOpen={openComments[p.id] || false} tags={postTags[p.id] || []} commentVotes={commentVotes} postVotes={allPostVotes.filter(v => v.post_id === p.id)}
               onVote={handleVote} onCommentVote={handleCommentVote} onOpenProfile={setModalProfile}
-              onToggleComments={handleToggleComments} onComment={handleComment} />
+              onToggleComments={handleToggleComments} onComment={handleComment} onEdit={handleEditPost} />
           ))}
         </>}
 
@@ -996,7 +1072,9 @@ export default function Home() {
         {tab === 'help' && <>
           {[
             { title: '🔥 What is aura?', body: 'Your score on this site. Post something, people vote on it, your aura goes up or down. Simple.' },
-            { title: '🗳️ Voting', body: 'Vote +1 to +50 or negative on any post. Positive votes cost aura: +1 and +5 are free, +10 costs 1, and +50 costs 5. Changing a vote only charges or refunds the difference. Negative votes are free.' },
+            { title: '🗳️ Voting', body: 'Vote with presets including ±25, or type any whole-number vote from -100 to +100. Negative votes are free. Positive votes of +1 through +5 are free; above that, the cost is 1 aura per 10 vote power rounded up (so +25 costs 3 and +69 costs 7). Large votes of 50 or more still count toward anti-glaze limits.' },
+            { title: '📣 Callouts', body: 'When making a post, turn on Call out, tag exactly one person, and choose 🙂 Good or 😡 Bad. The person being called out gets 100% of the Aura that post gains or loses. If voters push the post opposite your callout direction, the poster gets an equal false-callout penalty. If the vote swings back, that penalty adjusts back too.' },
+            { title: '✏️ Post edits', body: 'You can edit each of your posts one time. After that one edit, the post is locked.' },
             { title: '📍 Tagging', body: 'When making a post, tap "Tag people" to tag someone in it. If your post gets votes, tagged people split a 50% bonus pool so tagging cannot multiply aura without limit. Tag people who are actually in the post.' },
             { title: '📊 Profile votes', body: "You can vote on someone's whole profile, not just their posts. Tap their name or avatar anywhere to pull up their profile and rate their vibe." },
             { title: '🤡 Negative aura', body: 'Drop below 0 and clown emojis start showing on your profile. Clown mode now has escalating tiers: Clown, Big Clown, and Mega Clown. Positive gains are taxed 25%, 35%, or 50% into the prize pool, while negative users get a larger daily comeback check-in.' },
@@ -1215,7 +1293,7 @@ export default function Home() {
                 comments={comments[p.id] || []} commentCount={commentCounts[p.id] || 0}
                 isCommentsOpen={openComments[p.id] || false} tags={postTags[p.id] || []} commentVotes={commentVotes} postVotes={allPostVotes.filter(v => v.post_id === p.id)}
                 onVote={handleVote} onCommentVote={handleCommentVote} onOpenProfile={setModalProfile}
-                onToggleComments={handleToggleComments} onComment={handleComment} />
+                onToggleComments={handleToggleComments} onComment={handleComment} onEdit={handleEditPost} />
             ))
           }
         </>}
