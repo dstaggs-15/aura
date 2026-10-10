@@ -603,15 +603,19 @@ export default function Home() {
     }
   }
 
-  const handleComment = async (postId: number, text: string): Promise<boolean> => {
+  const handleComment = async (postId: number, text: string, parentCommentId: number | null = null): Promise<boolean> => {
     if (!profile || !text.trim()) return false
-    const { data, error } = await supabase.from('comments').insert({ post_id: postId, user_id: profile.id, text: text.trim() }).select('*').single()
+    const { data, error } = await supabase.from('comments').insert({ post_id: postId, user_id: profile.id, text: text.trim(), parent_comment_id: parentCommentId }).select('*').single()
     if (error) { notify(`Could not post comment: ${error.message}`, 'neg'); return false }
     if (data) {
       setComments(c => ({ ...c, [postId]: [...(c[postId] || []), data] }))
       setCommentCounts(c => ({ ...c, [postId]: (c[postId] || 0) + 1 }))
       // Re-read from the database so the open thread always matches the server.
       setTimeout(() => loadCommentsForPost(postId), 0)
+      if (parentCommentId) {
+        const { error: pushError } = await supabase.functions.invoke('send-new-post-push', { body: { reply_comment_id: data.id } })
+        if (pushError) console.warn('Reply push failed:', pushError.message)
+      }
       return true
     }
     return false
@@ -820,9 +824,9 @@ export default function Home() {
                         <button key={v} onClick={() => handleProfileVote(modalProfile.id, v)} style={{ padding: '5px 9px', borderRadius: 7, fontSize: 11, fontWeight: 700, fontFamily: 'monospace', cursor: 'pointer', border: `1px solid ${active ? 'transparent' : S.border2}`, background: active ? (neg ? S.red : S.blue) : S.card2, color: active ? '#fff' : (neg ? S.red : S.blue) }}>{v > 0 ? `+${v}` : v}</button>
                       )
                     })}
-                    <input value={profileCustomVote} inputMode="numeric" placeholder="custom" aria-label="Custom profile Aura vote"
+                    <input value={profileCustomVote} inputMode="numeric" placeholder="Custom" aria-label="Custom profile Aura vote"
                       onChange={e => { if (/^-?\d*$/.test(e.target.value)) setProfileCustomVote(e.target.value) }}
-                      style={{ width: 68, padding: '5px 7px', borderRadius: 7, border: `1px solid ${S.border2}`, background: S.card2, color: S.text, fontSize: 11, fontFamily: 'monospace' }} />
+                      style={{ width: 58, padding: '5px 6px', borderRadius: 7, border: `1px solid ${S.border2}`, background: S.card2, color: S.text, fontSize: 10, fontFamily: 'monospace', textAlign: 'center', letterSpacing: 0 }} />
                     <button disabled={!profileCustomVote || Number(profileCustomVote) === 0 || Math.abs(Number(profileCustomVote)) > 100}
                       onClick={() => { const v = Number(profileCustomVote); if (Number.isInteger(v) && v !== 0 && Math.abs(v) <= 100) handleProfileVote(modalProfile.id, v) }}
                       style={{ padding: '5px 9px', borderRadius: 7, fontSize: 10, fontWeight: 700, border: `1px solid ${S.border2}`, background: 'transparent', color: S.text2, cursor: 'pointer' }}>Vote</button>
