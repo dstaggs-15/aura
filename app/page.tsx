@@ -880,6 +880,20 @@ export default function Home() {
                   })}
                 </div>
               )}
+              <div style={{ marginBottom: 10 }}>
+                <button onClick={() => { setCalloutMode(v => !v); setShowTagPicker(true); if (selectedTags.length > 1) setSelectedTags(selectedTags.slice(0,1)) }}
+                  style={{ padding: '7px 11px', borderRadius: 9, border: `1px solid ${calloutMode ? S.fire : S.border2}`, background: calloutMode ? '#2a1b12' : 'transparent', color: calloutMode ? S.fire : S.text2, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                  📣 {calloutMode ? 'Call out ON' : 'Call out'}
+                </button>
+                {calloutMode && (
+                  <div style={{ display: 'flex', gap: 7, marginTop: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span style={{ fontSize: 11, color: S.text3 }}>What kind of callout?</span>
+                    <button onClick={() => setCalloutSentiment('good')} style={{ padding: '6px 10px', borderRadius: 8, border: `1px solid ${calloutSentiment === 'good' ? '#22c55e' : S.border2}`, background: calloutSentiment === 'good' ? '#12351d' : 'transparent', color: calloutSentiment === 'good' ? '#98e8ae' : S.text2, cursor: 'pointer' }}>🙂 Good</button>
+                    <button onClick={() => setCalloutSentiment('bad')} style={{ padding: '6px 10px', borderRadius: 8, border: `1px solid ${calloutSentiment === 'bad' ? S.red : S.border2}`, background: calloutSentiment === 'bad' ? S.redDim : 'transparent', color: calloutSentiment === 'bad' ? '#ffb4b4' : S.text2, cursor: 'pointer' }}>😡 Bad</button>
+                    <span style={{ fontSize: 10, color: S.text3 }}>Tag exactly one person. They get 100% of this post’s Aura.</span>
+                  </div>
+                )}
+              </div>
               <div style={{ position: 'relative' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', gap: 8 }}>
@@ -892,7 +906,7 @@ export default function Home() {
                     </button>
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <button onClick={() => { setComposing(false); draftRef.current = ''; setPostImage(null); setSelectedTags([]) }} style={{ padding: '7px 16px', borderRadius: 10, fontSize: 13, border: `1px solid ${S.border2}`, background: 'transparent', color: S.text2, cursor: 'pointer' }}>Cancel</button>
+                    <button onClick={() => { setComposing(false); draftRef.current = ''; setPostImage(null); setSelectedTags([]); setCalloutMode(false); setCalloutSentiment('good') }} style={{ padding: '7px 16px', borderRadius: 10, fontSize: 13, border: `1px solid ${S.border2}`, background: 'transparent', color: S.text2, cursor: 'pointer' }}>Cancel</button>
                     <button onClick={handlePost} disabled={posting} style={{ padding: '7px 18px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: 'none', background: posting ? S.border : S.blue, color: posting ? S.text3 : '#fff', cursor: posting ? 'default' : 'pointer' }}>
                       {posting ? '...' : 'Post'}
                     </button>
@@ -900,7 +914,7 @@ export default function Home() {
                 </div>
                 {showTagPicker && (
                   <TagPicker profiles={otherProfiles} selected={selectedTags}
-                    onToggle={id => setSelectedTags(t => t.includes(id) ? t.filter(x => x !== id) : [...t, id])} />
+                    onToggle={id => setSelectedTags(t => calloutMode ? (t.includes(id) ? [] : [id]) : (t.includes(id) ? t.filter(x => x !== id) : [...t, id]))} />
                 )}
               </div>
             </Card>
@@ -923,7 +937,7 @@ export default function Home() {
               comments={comments[p.id] || []} commentCount={commentCounts[p.id] || 0}
               isCommentsOpen={openComments[p.id] || false} tags={postTags[p.id] || []} commentVotes={commentVotes} postVotes={allPostVotes.filter(v => v.post_id === p.id)}
               onVote={handleVote} onCommentVote={handleCommentVote} onOpenProfile={setModalProfile}
-              onToggleComments={handleToggleComments} onComment={handleComment} />
+              onToggleComments={handleToggleComments} onComment={handleComment} onEdit={handleEditPost} />
           ))}
         </>}
 
