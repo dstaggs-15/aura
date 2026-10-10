@@ -3,7 +3,7 @@ import { useState, useEffect, useRef, memo } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Profile, Post, Comment, LedgerEntry, Friendship } from '@/lib/types'
 
-const VOTE_OPTS = [-50, -10, -5, -1, 1, 5, 10, 50]
+const VOTE_OPTS = [-50, -25, -10, -5, -1, 1, 5, 10, 25, 50]
 const fmtAura = (n: number) => (n >= 0 ? "+" : "") + n.toLocaleString()
 const clownCount = (a: number) => a < -499 ? 3 : a < -99 ? 2 : a < 0 ? 1 : 0
 const clownTitle = (a: number) => a <= -500 ? 'Mega Clown' : a <= -100 ? 'Big Clown' : a < 0 ? 'Clown' : null
