@@ -604,9 +604,19 @@ export default function Home() {
     setPosting(true)
     let image_url = null
     if (postImage) {
-      const ext = postImage.name.split('.').pop()
+      const optimized = await optimizeImage(postImage, 1600, 0.78)
+      const ext = imageExt(optimized)
       const path = `${profile.id}-${Date.now()}.${ext}`
-      await supabase.storage.from('posts').upload(path, postImage, { upsert: true })
+      const { error: uploadError } = await supabase.storage.from('posts').upload(path, optimized, {
+        upsert: true,
+        cacheControl: '31536000',
+        contentType: optimized.type || undefined,
+      })
+      if (uploadError) {
+        notify(`Photo upload failed: ${uploadError.message}`, 'neg')
+        setPosting(false)
+        return
+      }
       const { data: urlData } = supabase.storage.from('posts').getPublicUrl(path)
       image_url = urlData.publicUrl
     }
@@ -719,27 +729,36 @@ export default function Home() {
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!profile || !e.target.files?.[0]) return
-    const file = e.target.files[0]
-    const ext = file.name.split('.').pop()
+    const file = await optimizeImage(e.target.files[0], 512, 0.82)
+    const ext = imageExt(file)
     const path = `${profile.id}.${ext}`
-    await supabase.storage.from('avatars').upload(path, file, { upsert: true })
+    const { error: uploadError } = await supabase.storage.from('avatars').upload(path, file, {
+      upsert: true,
+      cacheControl: '86400',
+      contentType: file.type || undefined,
+    })
+    if (uploadError) { notify(`Photo upload failed: ${uploadError.message}`, 'neg'); return }
     const { data } = supabase.storage.from('avatars').getPublicUrl(path)
-    const { error: profileError } = await supabase.rpc('update_my_profile', { p_patch: { avatar_url: data.publicUrl } })
+    const avatarUrl = `${data.publicUrl}?v=${Date.now()}`
+    const { error: profileError } = await supabase.rpc('update_my_profile', { p_patch: { avatar_url: avatarUrl } })
     if (profileError) { notify(profileError.message, 'neg'); return }
-    setProfile(p => p ? { ...p, avatar_url: data.publicUrl } : p)
-    setProfiles(ps => ps.map(p => p.id === profile.id ? { ...p, avatar_url: data.publicUrl } : p))
+    setProfile(p => p ? { ...p, avatar_url: avatarUrl } : p)
+    setProfiles(ps => ps.map(p => p.id === profile.id ? { ...p, avatar_url: avatarUrl } : p))
     notify('Photo updated', 'pos')
   }
 
   const handleBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!profile || !e.target.files?.[0]) return
-    const file = e.target.files[0]
-    const ext = file.name.split('.').pop()
+    const file = await optimizeImage(e.target.files[0], 1600, 0.8)
+    const ext = imageExt(file)
     const path = `banner-${profile.id}-${Date.now()}.${ext}`
-    const { error: uploadError } = await supabase.storage.from('avatars').upload(path, file)
+    const { error: uploadError } = await supabase.storage.from('avatars').upload(path, file, {
+      cacheControl: '31536000',
+      contentType: file.type || undefined,
+    })
     if (uploadError) { notify(uploadError.message, 'neg'); return }
     const { data } = supabase.storage.from('avatars').getPublicUrl(path)
-    const bannerUrl = `${data.publicUrl}?v=${Date.now()}`
+    const bannerUrl = data.publicUrl
     const { error: updateError } = await supabase.rpc('update_my_profile', { p_patch: { banner_url: bannerUrl } })
     if (updateError) { notify(updateError.message, 'neg'); return }
     setProfile(p => p ? { ...p, banner_url: bannerUrl } : p)
