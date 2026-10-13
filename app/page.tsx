@@ -53,6 +53,39 @@ const FounderTag = ({ p }: { p: any }) => isFounder(p) ? <span title="Founder of
 const profileCard = (p: any) => (PROFILE_THEME_CARDS[p?.profile_theme] || PROFILE_THEME_CARDS.clean)[0]
 const profileCard2 = (p: any) => (PROFILE_THEME_CARDS[p?.profile_theme] || PROFILE_THEME_CARDS.clean)[1]
 
+const optimizeImage = async (file: File, maxSide: number, quality = 0.8) => {
+  if (!file.type.startsWith('image/') || file.type === 'image/gif') return file
+  try {
+    const bitmap = await createImageBitmap(file)
+    const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height))
+    const width = Math.max(1, Math.round(bitmap.width * scale))
+    const height = Math.max(1, Math.round(bitmap.height * scale))
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d')
+    if (!ctx) { bitmap.close(); return file }
+    ctx.drawImage(bitmap, 0, 0, width, height)
+    bitmap.close()
+
+    const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/webp', quality))
+    if (!blob) return file
+    if (scale === 1 && blob.size >= file.size) return file
+
+    const base = file.name.replace(/\.[^.]+$/, '') || 'image'
+    return new File([blob], `${base}.webp`, { type: 'image/webp', lastModified: Date.now() })
+  } catch {
+    return file
+  }
+}
+
+const imageExt = (file: File) => {
+  if (file.type === 'image/webp') return 'webp'
+  if (file.type === 'image/png') return 'png'
+  if (file.type === 'image/jpeg') return 'jpg'
+  return file.name.split('.').pop()?.toLowerCase() || 'jpg'
+}
+
 const Av = ({ p, size = 36 }: { p: any; size?: number }) => (
   <div style={{
     width: size, height: size, borderRadius: '50%', flexShrink: 0,
@@ -62,7 +95,7 @@ const Av = ({ p, size = 36 }: { p: any; size?: number }) => (
     fontSize: size * 0.33, fontWeight: 700, color: '#fff',
   }}>
     {p.avatar_url
-      ? <img src={p.avatar_url} alt={p.username} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+      ? <img src={p.avatar_url} alt={p.username} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
       : p.username.slice(0, 2).toUpperCase()}
   </div>
 )
@@ -231,7 +264,7 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
             </div>
           )}
           {post.image_url && (
-            <img src={post.image_url} alt="post" style={{ width: '100%', borderRadius: 10, marginTop: 10, maxHeight: 400, objectFit: 'contain', background: S.card2 }} />
+            <img src={post.image_url} alt="post" loading="lazy" decoding="async" style={{ width: '100%', borderRadius: 10, marginTop: 10, maxHeight: 400, objectFit: 'contain', background: S.card2 }} />
           )}
         </div>
       </div>
@@ -886,7 +919,7 @@ export default function Home() {
               {posts.filter(p => p.user_id === modalProfile.id).map(p => (
                 <div key={p.id} style={{ background: S.card2, borderRadius: 10, padding: '10px 13px', marginBottom: 8 }}>
                   <p style={{ fontSize: 13, color: '#ccc', marginBottom: 6, lineHeight: 1.5 }}>{p.text}</p>
-                  {p.image_url && <img src={p.image_url} alt="post" style={{ width: '100%', borderRadius: 8, marginBottom: 6, maxHeight: 200, objectFit: 'contain', background: S.card }} />}
+                  {p.image_url && <img src={p.image_url} alt="post" loading="lazy" decoding="async" style={{ width: '100%', borderRadius: 8, marginBottom: 6, maxHeight: 200, objectFit: 'contain', background: S.card }} />}
                   <span style={{ fontFamily: 'monospace', fontSize: 12, fontWeight: 700, color: p.aura >= 0 ? S.blue : S.red }}>{fmtAura(p.aura)}</span>
                 </div>
               ))}
