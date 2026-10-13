@@ -415,6 +415,9 @@ export default function Home() {
   const titleRef = useRef<string>('')
   const usernameRef = useRef<string>('')
   const announceRef = useRef<string>('')
+  const loadPromiseRef = useRef<Promise<void> | null>(null)
+  const loadAgainRef = useRef(false)
+  const realtimeReloadTimer = useRef<any>(null)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -434,55 +437,82 @@ export default function Home() {
   }, [profile?.id])
 
   const loadAll = async (uid: string) => {
-    const [
-      { data: profs }, { data: ps }, { data: bucket }, { data: vs },
-      { data: counts }, { data: tags }, { data: pvs }, { data: friendshipRows }, { data: allVotes },
-    ] = await Promise.all([
-      supabase.from('profiles').select('*'),
-      supabase.from('posts').select('*').order('created_at', { ascending: false }),
-      supabase.from('tax_bucket').select('*').single(),
-      supabase.from('votes').select('*').eq('voter_id', uid),
-      supabase.from('post_comment_counts').select('*'),
-      supabase.from('post_tags').select('*'),
-      supabase.from('profile_votes').select('*').eq('voter_id', uid),
-      supabase.from('friendships').select('*').order('created_at', { ascending: false }),
-      supabase.from('votes').select('post_id,voter_id,value'),
-    ])
+    if (loadPromiseRef.current) {
+      loadAgainRef.current = true
+      await loadPromiseRef.current
+      return
+    }
 
-    if (profs) {
-      const visible = profs.filter((p: Profile) => p.is_member)
-      setProfiles(visible)
-      const myProf = visible.find((p: Profile) => p.id === uid)
-      if (!myProf) {
-        await supabase.auth.signOut()
-        window.location.href = '/auth'
-        return
+    const run = (async () => {
+      const [
+        { data: profs }, { data: ps }, { data: bucket }, { data: vs },
+        { data: counts }, { data: tags }, { data: pvs }, { data: friendshipRows }, { data: allVotes },
+      ] = await Promise.all([
+        supabase.from('profiles').select('*'),
+        supabase.from('posts').select('*').order('created_at', { ascending: false }),
+        supabase.from('tax_bucket').select('*').single(),
+        supabase.from('votes').select('*').eq('voter_id', uid),
+        supabase.from('post_comment_counts').select('*'),
+        supabase.from('post_tags').select('*'),
+        supabase.from('profile_votes').select('*').eq('voter_id', uid),
+        supabase.from('friendships').select('*').order('created_at', { ascending: false }),
+        supabase.from('votes').select('post_id,voter_id,value'),
+      ])
+
+      if (profs) {
+        const visible = profs.filter((p: Profile) => p.is_member)
+        setProfiles(visible)
+        const myProf = visible.find((p: Profile) => p.id === uid)
+        if (!myProf) {
+          await supabase.auth.signOut()
+          window.location.href = '/auth'
+          return
+        }
+        setProfile(myProf)
       }
-      setProfile(myProf)
+      if (ps) setPosts(ps)
+      if (bucket) setTaxBucket(Number(bucket.amount) || 0)
+      if (vs) { const m: Record<number, number> = {}; vs.forEach((v: any) => m[v.post_id] = v.value); setMyVotes(m) }
+      if (counts) { const m: Record<number, number> = {}; counts.forEach((x: any) => m[x.post_id] = Number(x.count)); setCommentCounts(m) }
+      if (tags) {
+        const m: Record<number, string[]> = {}
+        tags.forEach((t: any) => { if (!m[t.post_id]) m[t.post_id] = []; m[t.post_id].push(t.tagged_user_id) })
+        setPostTags(m)
+      }
+      if (pvs) { const m: Record<string, number> = {}; pvs.forEach((v: any) => m[v.target_id] = v.value); setProfileVotes(m) }
+      if (friendshipRows) setFriendships(friendshipRows)
+      if (allVotes) setAllPostVotes(allVotes)
+    })()
+
+    loadPromiseRef.current = run
+    try {
+      await run
+    } finally {
+      loadPromiseRef.current = null
     }
-    if (ps) setPosts(ps)
-    if (bucket) setTaxBucket(Number(bucket.amount) || 0)
-    if (vs) { const m: Record<number, number> = {}; vs.forEach((v: any) => m[v.post_id] = v.value); setMyVotes(m) }
-    if (counts) { const m: Record<number, number> = {}; counts.forEach((x: any) => m[x.post_id] = Number(x.count)); setCommentCounts(m) }
-    if (tags) {
-      const m: Record<number, string[]> = {}
-      tags.forEach((t: any) => { if (!m[t.post_id]) m[t.post_id] = []; m[t.post_id].push(t.tagged_user_id) })
-      setPostTags(m)
+
+    if (loadAgainRef.current) {
+      loadAgainRef.current = false
+      await loadAll(uid)
     }
-    if (pvs) { const m: Record<string, number> = {}; pvs.forEach((v: any) => m[v.target_id] = v.value); setProfileVotes(m) }
-    if (friendshipRows) setFriendships(friendshipRows)
-    if (allVotes) setAllPostVotes(allVotes)
   }
 
   useEffect(() => {
     if (!profile?.id) return
+    const scheduleReload = () => {
+      if (realtimeReloadTimer.current) clearTimeout(realtimeReloadTimer.current)
+      realtimeReloadTimer.current = setTimeout(() => loadAll(profile.id), 500)
+    }
     const channel = supabase.channel('aura-live')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => loadAll(profile.id))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => loadAll(profile.id))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, () => loadAll(profile.id))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'friendships' }, () => loadAll(profile.id))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, scheduleReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, scheduleReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, scheduleReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'friendships' }, scheduleReload)
       .subscribe()
-    return () => { supabase.removeChannel(channel) }
+    return () => {
+      if (realtimeReloadTimer.current) clearTimeout(realtimeReloadTimer.current)
+      supabase.removeChannel(channel)
+    }
   }, [profile?.id])
 
   const notify = (msg: string, type = 'neutral') => {
