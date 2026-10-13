@@ -53,6 +53,39 @@ const FounderTag = ({ p }: { p: any }) => isFounder(p) ? <span title="Founder of
 const profileCard = (p: any) => (PROFILE_THEME_CARDS[p?.profile_theme] || PROFILE_THEME_CARDS.clean)[0]
 const profileCard2 = (p: any) => (PROFILE_THEME_CARDS[p?.profile_theme] || PROFILE_THEME_CARDS.clean)[1]
 
+const optimizeImage = async (file: File, maxSide: number, quality = 0.8) => {
+  if (!file.type.startsWith('image/') || file.type === 'image/gif') return file
+  try {
+    const bitmap = await createImageBitmap(file)
+    const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height))
+    const width = Math.max(1, Math.round(bitmap.width * scale))
+    const height = Math.max(1, Math.round(bitmap.height * scale))
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d')
+    if (!ctx) { bitmap.close(); return file }
+    ctx.drawImage(bitmap, 0, 0, width, height)
+    bitmap.close()
+
+    const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, 'image/webp', quality))
+    if (!blob) return file
+    if (scale === 1 && blob.size >= file.size) return file
+
+    const base = file.name.replace(/\.[^.]+$/, '') || 'image'
+    return new File([blob], `${base}.webp`, { type: 'image/webp', lastModified: Date.now() })
+  } catch {
+    return file
+  }
+}
+
+const imageExt = (file: File) => {
+  if (file.type === 'image/webp') return 'webp'
+  if (file.type === 'image/png') return 'png'
+  if (file.type === 'image/jpeg') return 'jpg'
+  return file.name.split('.').pop()?.toLowerCase() || 'jpg'
+}
+
 const Av = ({ p, size = 36 }: { p: any; size?: number }) => (
   <div style={{
     width: size, height: size, borderRadius: '50%', flexShrink: 0,
@@ -62,7 +95,7 @@ const Av = ({ p, size = 36 }: { p: any; size?: number }) => (
     fontSize: size * 0.33, fontWeight: 700, color: '#fff',
   }}>
     {p.avatar_url
-      ? <img src={p.avatar_url} alt={p.username} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+      ? <img src={p.avatar_url} alt={p.username} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
       : p.username.slice(0, 2).toUpperCase()}
   </div>
 )
@@ -231,7 +264,7 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
             </div>
           )}
           {post.image_url && (
-            <img src={post.image_url} alt="post" style={{ width: '100%', borderRadius: 10, marginTop: 10, maxHeight: 400, objectFit: 'contain', background: S.card2 }} />
+            <img src={post.image_url} alt="post" loading="lazy" decoding="async" style={{ width: '100%', borderRadius: 10, marginTop: 10, maxHeight: 400, objectFit: 'contain', background: S.card2 }} />
           )}
         </div>
       </div>
@@ -382,6 +415,9 @@ export default function Home() {
   const titleRef = useRef<string>('')
   const usernameRef = useRef<string>('')
   const announceRef = useRef<string>('')
+  const loadPromiseRef = useRef<Promise<void> | null>(null)
+  const loadAgainRef = useRef(false)
+  const realtimeReloadTimer = useRef<any>(null)
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -401,55 +437,82 @@ export default function Home() {
   }, [profile?.id])
 
   const loadAll = async (uid: string) => {
-    const [
-      { data: profs }, { data: ps }, { data: bucket }, { data: vs },
-      { data: counts }, { data: tags }, { data: pvs }, { data: friendshipRows }, { data: allVotes },
-    ] = await Promise.all([
-      supabase.from('profiles').select('*'),
-      supabase.from('posts').select('*').order('created_at', { ascending: false }),
-      supabase.from('tax_bucket').select('*').single(),
-      supabase.from('votes').select('*').eq('voter_id', uid),
-      supabase.from('post_comment_counts').select('*'),
-      supabase.from('post_tags').select('*'),
-      supabase.from('profile_votes').select('*').eq('voter_id', uid),
-      supabase.from('friendships').select('*').order('created_at', { ascending: false }),
-      supabase.from('votes').select('post_id,voter_id,value'),
-    ])
+    if (loadPromiseRef.current) {
+      loadAgainRef.current = true
+      await loadPromiseRef.current
+      return
+    }
 
-    if (profs) {
-      const visible = profs.filter((p: Profile) => p.is_member)
-      setProfiles(visible)
-      const myProf = visible.find((p: Profile) => p.id === uid)
-      if (!myProf) {
-        await supabase.auth.signOut()
-        window.location.href = '/auth'
-        return
+    const run = (async () => {
+      const [
+        { data: profs }, { data: ps }, { data: bucket }, { data: vs },
+        { data: counts }, { data: tags }, { data: pvs }, { data: friendshipRows }, { data: allVotes },
+      ] = await Promise.all([
+        supabase.from('profiles').select('*'),
+        supabase.from('posts').select('*').order('created_at', { ascending: false }),
+        supabase.from('tax_bucket').select('*').single(),
+        supabase.from('votes').select('*').eq('voter_id', uid),
+        supabase.from('post_comment_counts').select('*'),
+        supabase.from('post_tags').select('*'),
+        supabase.from('profile_votes').select('*').eq('voter_id', uid),
+        supabase.from('friendships').select('*').order('created_at', { ascending: false }),
+        supabase.from('votes').select('post_id,voter_id,value'),
+      ])
+
+      if (profs) {
+        const visible = profs.filter((p: Profile) => p.is_member)
+        setProfiles(visible)
+        const myProf = visible.find((p: Profile) => p.id === uid)
+        if (!myProf) {
+          await supabase.auth.signOut()
+          window.location.href = '/auth'
+          return
+        }
+        setProfile(myProf)
       }
-      setProfile(myProf)
+      if (ps) setPosts(ps)
+      if (bucket) setTaxBucket(Number(bucket.amount) || 0)
+      if (vs) { const m: Record<number, number> = {}; vs.forEach((v: any) => m[v.post_id] = v.value); setMyVotes(m) }
+      if (counts) { const m: Record<number, number> = {}; counts.forEach((x: any) => m[x.post_id] = Number(x.count)); setCommentCounts(m) }
+      if (tags) {
+        const m: Record<number, string[]> = {}
+        tags.forEach((t: any) => { if (!m[t.post_id]) m[t.post_id] = []; m[t.post_id].push(t.tagged_user_id) })
+        setPostTags(m)
+      }
+      if (pvs) { const m: Record<string, number> = {}; pvs.forEach((v: any) => m[v.target_id] = v.value); setProfileVotes(m) }
+      if (friendshipRows) setFriendships(friendshipRows)
+      if (allVotes) setAllPostVotes(allVotes)
+    })()
+
+    loadPromiseRef.current = run
+    try {
+      await run
+    } finally {
+      loadPromiseRef.current = null
     }
-    if (ps) setPosts(ps)
-    if (bucket) setTaxBucket(Number(bucket.amount) || 0)
-    if (vs) { const m: Record<number, number> = {}; vs.forEach((v: any) => m[v.post_id] = v.value); setMyVotes(m) }
-    if (counts) { const m: Record<number, number> = {}; counts.forEach((x: any) => m[x.post_id] = Number(x.count)); setCommentCounts(m) }
-    if (tags) {
-      const m: Record<number, string[]> = {}
-      tags.forEach((t: any) => { if (!m[t.post_id]) m[t.post_id] = []; m[t.post_id].push(t.tagged_user_id) })
-      setPostTags(m)
+
+    if (loadAgainRef.current) {
+      loadAgainRef.current = false
+      await loadAll(uid)
     }
-    if (pvs) { const m: Record<string, number> = {}; pvs.forEach((v: any) => m[v.target_id] = v.value); setProfileVotes(m) }
-    if (friendshipRows) setFriendships(friendshipRows)
-    if (allVotes) setAllPostVotes(allVotes)
   }
 
   useEffect(() => {
     if (!profile?.id) return
+    const scheduleReload = () => {
+      if (realtimeReloadTimer.current) clearTimeout(realtimeReloadTimer.current)
+      realtimeReloadTimer.current = setTimeout(() => loadAll(profile.id), 500)
+    }
     const channel = supabase.channel('aura-live')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, () => loadAll(profile.id))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => loadAll(profile.id))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, () => loadAll(profile.id))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'friendships' }, () => loadAll(profile.id))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, scheduleReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, scheduleReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'comments' }, scheduleReload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'friendships' }, scheduleReload)
       .subscribe()
-    return () => { supabase.removeChannel(channel) }
+    return () => {
+      if (realtimeReloadTimer.current) clearTimeout(realtimeReloadTimer.current)
+      supabase.removeChannel(channel)
+    }
   }, [profile?.id])
 
   const notify = (msg: string, type = 'neutral') => {
@@ -541,9 +604,19 @@ export default function Home() {
     setPosting(true)
     let image_url = null
     if (postImage) {
-      const ext = postImage.name.split('.').pop()
+      const optimized = await optimizeImage(postImage, 1600, 0.78)
+      const ext = imageExt(optimized)
       const path = `${profile.id}-${Date.now()}.${ext}`
-      await supabase.storage.from('posts').upload(path, postImage, { upsert: true })
+      const { error: uploadError } = await supabase.storage.from('posts').upload(path, optimized, {
+        upsert: true,
+        cacheControl: '31536000',
+        contentType: optimized.type || undefined,
+      })
+      if (uploadError) {
+        notify(`Photo upload failed: ${uploadError.message}`, 'neg')
+        setPosting(false)
+        return
+      }
       const { data: urlData } = supabase.storage.from('posts').getPublicUrl(path)
       image_url = urlData.publicUrl
     }
@@ -656,27 +729,36 @@ export default function Home() {
 
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!profile || !e.target.files?.[0]) return
-    const file = e.target.files[0]
-    const ext = file.name.split('.').pop()
+    const file = await optimizeImage(e.target.files[0], 512, 0.82)
+    const ext = imageExt(file)
     const path = `${profile.id}.${ext}`
-    await supabase.storage.from('avatars').upload(path, file, { upsert: true })
+    const { error: uploadError } = await supabase.storage.from('avatars').upload(path, file, {
+      upsert: true,
+      cacheControl: '86400',
+      contentType: file.type || undefined,
+    })
+    if (uploadError) { notify(`Photo upload failed: ${uploadError.message}`, 'neg'); return }
     const { data } = supabase.storage.from('avatars').getPublicUrl(path)
-    const { error: profileError } = await supabase.rpc('update_my_profile', { p_patch: { avatar_url: data.publicUrl } })
+    const avatarUrl = `${data.publicUrl}?v=${Date.now()}`
+    const { error: profileError } = await supabase.rpc('update_my_profile', { p_patch: { avatar_url: avatarUrl } })
     if (profileError) { notify(profileError.message, 'neg'); return }
-    setProfile(p => p ? { ...p, avatar_url: data.publicUrl } : p)
-    setProfiles(ps => ps.map(p => p.id === profile.id ? { ...p, avatar_url: data.publicUrl } : p))
+    setProfile(p => p ? { ...p, avatar_url: avatarUrl } : p)
+    setProfiles(ps => ps.map(p => p.id === profile.id ? { ...p, avatar_url: avatarUrl } : p))
     notify('Photo updated', 'pos')
   }
 
   const handleBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (!profile || !e.target.files?.[0]) return
-    const file = e.target.files[0]
-    const ext = file.name.split('.').pop()
+    const file = await optimizeImage(e.target.files[0], 1600, 0.8)
+    const ext = imageExt(file)
     const path = `banner-${profile.id}-${Date.now()}.${ext}`
-    const { error: uploadError } = await supabase.storage.from('avatars').upload(path, file)
+    const { error: uploadError } = await supabase.storage.from('avatars').upload(path, file, {
+      cacheControl: '31536000',
+      contentType: file.type || undefined,
+    })
     if (uploadError) { notify(uploadError.message, 'neg'); return }
     const { data } = supabase.storage.from('avatars').getPublicUrl(path)
-    const bannerUrl = `${data.publicUrl}?v=${Date.now()}`
+    const bannerUrl = data.publicUrl
     const { error: updateError } = await supabase.rpc('update_my_profile', { p_patch: { banner_url: bannerUrl } })
     if (updateError) { notify(updateError.message, 'neg'); return }
     setProfile(p => p ? { ...p, banner_url: bannerUrl } : p)
@@ -886,7 +968,7 @@ export default function Home() {
               {posts.filter(p => p.user_id === modalProfile.id).map(p => (
                 <div key={p.id} style={{ background: S.card2, borderRadius: 10, padding: '10px 13px', marginBottom: 8 }}>
                   <p style={{ fontSize: 13, color: '#ccc', marginBottom: 6, lineHeight: 1.5 }}>{p.text}</p>
-                  {p.image_url && <img src={p.image_url} alt="post" style={{ width: '100%', borderRadius: 8, marginBottom: 6, maxHeight: 200, objectFit: 'contain', background: S.card }} />}
+                  {p.image_url && <img src={p.image_url} alt="post" loading="lazy" decoding="async" style={{ width: '100%', borderRadius: 8, marginBottom: 6, maxHeight: 200, objectFit: 'contain', background: S.card }} />}
                   <span style={{ fontFamily: 'monospace', fontSize: 12, fontWeight: 700, color: p.aura >= 0 ? S.blue : S.red }}>{fmtAura(p.aura)}</span>
                 </div>
               ))}
