@@ -64,6 +64,9 @@ using (public.is_aura_member());
 revoke all on public.announcements from anon;
 grant select on public.announcements to authenticated;
 
+create index if not exists announcements_author_created_idx
+  on public.announcements(author_id, created_at desc);
+
 CREATE OR REPLACE FUNCTION public.cast_post_vote(p_post_id bigint, p_value integer)
  RETURNS jsonb
  LANGUAGE plpgsql
@@ -367,4 +370,7 @@ end;
 $function$
 
 
+grant execute on function public.cast_post_vote(bigint,integer) to authenticated;
+
+revoke execute on function public.cast_post_vote(bigint,integer) from public, anon;
 grant execute on function public.cast_post_vote(bigint,integer) to authenticated;
