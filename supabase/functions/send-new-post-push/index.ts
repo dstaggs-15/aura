@@ -37,6 +37,15 @@ Deno.serve(async req => {
       const message = String(announcement).trim().slice(0, 220)
       if (!message) return new Response('Message required', { status: 400, headers: cors })
 
+      const { data: savedAnnouncement, error: announcementError } = await admin.from('announcements')
+        .insert({ author_id: user.id, message })
+        .select('id,author_id,message,created_at')
+        .single()
+
+      if (announcementError || !savedAnnouncement) {
+        throw announcementError || new Error('Could not save announcement')
+      }
+
       const { data: recipients } = await admin.from('profiles')
         .select('id')
         .eq('is_member', true)
@@ -72,7 +81,7 @@ Deno.serve(async req => {
         }
       }))
 
-      return Response.json({ ok: true, sent }, { headers: cors })
+      return Response.json({ ok: true, sent, announcement: savedAnnouncement }, { headers: cors })
     }
     if (reply_comment_id) {
       const { data: reply } = await admin.from('comments')

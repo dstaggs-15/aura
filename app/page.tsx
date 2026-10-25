@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useRef, memo } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Profile, Post, Comment, LedgerEntry, Friendship } from '@/lib/types'
+import { Profile, Post, Comment, LedgerEntry, Friendship, Announcement } from '@/lib/types'
 
 const VOTE_OPTS = [-50, -25, -10, -5, -1, 1, 5, 10, 25, 50]
 const fmtAura = (n: number) => (n >= 0 ? "+" : "") + n.toLocaleString()
@@ -222,6 +222,9 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
   const [editingPost, setEditingPost] = useState(false)
   const [editText, setEditText] = useState(post.text)
   const [replyingTo, setReplyingTo] = useState<number | null>(null)
+  const postImageUrls = Array.isArray(post.image_urls) && post.image_urls.length > 0
+    ? post.image_urls.slice(0, 3)
+    : (post.image_url ? [post.image_url] : [])
 
   return (
     <Card style={{ marginBottom: 8 }}>
@@ -263,8 +266,32 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
               ))}
             </div>
           )}
-          {post.image_url && (
-            <img src={post.image_url} alt="post" loading="lazy" decoding="async" style={{ width: '100%', borderRadius: 10, marginTop: 10, maxHeight: 400, objectFit: 'contain', background: S.card2 }} />
+          {postImageUrls.length > 0 && (
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: postImageUrls.length === 1 ? '1fr' : 'repeat(2, minmax(0, 1fr))',
+              gap: 5,
+              marginTop: 10,
+            }}>
+              {postImageUrls.map((url: string, index: number) => (
+                <img
+                  key={url + index}
+                  src={url}
+                  alt={postImageUrls.length === 1 ? 'post' : `post photo ${index + 1}`}
+                  loading="lazy"
+                  decoding="async"
+                  style={{
+                    width: '100%',
+                    height: postImageUrls.length === 1 ? 'auto' : (index === 0 && postImageUrls.length === 3 ? 240 : 180),
+                    gridColumn: postImageUrls.length === 3 && index === 0 ? '1 / -1' : undefined,
+                    borderRadius: 10,
+                    maxHeight: postImageUrls.length === 1 ? 430 : undefined,
+                    objectFit: 'cover',
+                    background: S.card2,
+                  }}
+                />
+              ))}
+            </div>
           )}
         </div>
       </div>
@@ -381,7 +408,7 @@ export default function Home() {
   const [filter, setFilter] = useState('recent')
   const [composing, setComposing] = useState(false)
   const [posting, setPosting] = useState(false)
-  const [postImage, setPostImage] = useState<File | null>(null)
+  const [postImages, setPostImages] = useState<File[]>([])
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [showTagPicker, setShowTagPicker] = useState(false)
   const [calloutMode, setCalloutMode] = useState(false)
@@ -403,6 +430,7 @@ export default function Home() {
   const [showCustomize, setShowCustomize] = useState(false)
   const [showAnnounce, setShowAnnounce] = useState(false)
   const [announceBusy, setAnnounceBusy] = useState(false)
+  const [announcements, setAnnouncements] = useState<Announcement[]>([])
   const [friendships, setFriendships] = useState<Friendship[]>([])
   const [pushEnabled, setPushEnabled] = useState(false)
   const [pushBusy, setPushBusy] = useState(false)
@@ -446,7 +474,7 @@ export default function Home() {
     const run = (async () => {
       const [
         { data: profs }, { data: ps }, { data: bucket }, { data: vs },
-        { data: counts }, { data: tags }, { data: pvs }, { data: friendshipRows }, { data: allVotes },
+        { data: counts }, { data: tags }, { data: pvs }, { data: friendshipRows }, { data: allVotes }, { data: announcementRows },
       ] = await Promise.all([
         supabase.from('profiles').select('*'),
         supabase.from('posts').select('*').order('created_at', { ascending: false }),
@@ -457,6 +485,7 @@ export default function Home() {
         supabase.from('profile_votes').select('*').eq('voter_id', uid),
         supabase.from('friendships').select('*').order('created_at', { ascending: false }),
         supabase.from('votes').select('post_id,voter_id,value'),
+        supabase.from('announcements').select('*').order('created_at', { ascending: false }).limit(100),
       ])
 
       if (profs) {
@@ -482,6 +511,7 @@ export default function Home() {
       if (pvs) { const m: Record<string, number> = {}; pvs.forEach((v: any) => m[v.target_id] = v.value); setProfileVotes(m) }
       if (friendshipRows) setFriendships(friendshipRows)
       if (allVotes) setAllPostVotes(allVotes)
+      if (announcementRows) setAnnouncements(announcementRows)
     })()
 
     loadPromiseRef.current = run
@@ -601,34 +631,52 @@ export default function Home() {
       notify('A callout must tag at least one person', 'neg')
       return
     }
+    if (postImages.length > 3) {
+      notify('You can add up to 3 photos per post', 'neg')
+      return
+    }
+
     setPosting(true)
-    let image_url = null
-    if (postImage) {
-      const optimized = await optimizeImage(postImage, 1600, 0.78)
+    const imageUrls: string[] = []
+    const uploadedPaths: string[] = []
+
+    for (let index = 0; index < postImages.length; index++) {
+      const optimized = await optimizeImage(postImages[index], 1600, 0.78)
       const ext = imageExt(optimized)
-      const path = `${profile.id}-${Date.now()}.${ext}`
+      const path = `${profile.id}-${Date.now()}-${index}.${ext}`
       const { error: uploadError } = await supabase.storage.from('posts').upload(path, optimized, {
         upsert: true,
         cacheControl: '31536000',
         contentType: optimized.type || undefined,
       })
       if (uploadError) {
+        if (uploadedPaths.length) await supabase.storage.from('posts').remove(uploadedPaths)
         notify(`Photo upload failed: ${uploadError.message}`, 'neg')
         setPosting(false)
         return
       }
+      uploadedPaths.push(path)
       const { data: urlData } = supabase.storage.from('posts').getPublicUrl(path)
-      image_url = urlData.publicUrl
+      imageUrls.push(urlData.publicUrl)
     }
+
     const { data, error: postError } = await supabase.from('posts').insert({
       user_id: profile.id,
       text: draftRef.current.trim(),
       aura: 0,
-      image_url,
+      image_url: imageUrls[0] || null,
+      image_urls: imageUrls,
       callout_target_id: calloutMode ? selectedTags[0] : null,
       callout_sentiment: calloutMode ? calloutSentiment : null,
     }).select('*').single()
-    if (postError) { notify(`Could not post: ${postError.message}`, 'neg'); setPosting(false); return }
+
+    if (postError) {
+      if (uploadedPaths.length) await supabase.storage.from('posts').remove(uploadedPaths)
+      notify(`Could not post: ${postError.message}`, 'neg')
+      setPosting(false)
+      return
+    }
+
     if (data) {
       if (selectedTags.length > 0) {
         await supabase.from('post_tags').insert(selectedTags.map(uid => ({ post_id: data.id, tagged_user_id: uid })))
@@ -638,7 +686,7 @@ export default function Home() {
       draftRef.current = ''
       const ta = document.getElementById('post-textarea') as HTMLTextAreaElement
       if (ta) ta.value = ''
-      setPostImage(null)
+      setPostImages([])
       setSelectedTags([])
       setCalloutMode(false)
       setCalloutSentiment('good')
@@ -670,6 +718,7 @@ export default function Home() {
       })
       if (error) throw error
       notify(`Announcement sent to ${data?.sent ?? 0} device${data?.sent === 1 ? '' : 's'} 🔥`, 'pos')
+      await loadAll(profile.id)
       announceRef.current = ''
       const box = document.getElementById('announce-text') as HTMLTextAreaElement | null
       if (box) box.value = ''
@@ -842,7 +891,7 @@ export default function Home() {
   )
 
   const otherProfiles = profiles.filter(p => p.id !== profile.id)
-  const TABS = ['feed', 'leaderboard', 'friends', 'bank', 'help', 'profile']
+  const TABS = ['feed', 'announcements', 'leaderboard', 'friends', 'bank', 'help', 'profile']
 
   return (
     <div style={{ minHeight: '100vh', width: '100%', maxWidth: '100vw', overflowX: 'hidden', background: S.bg, fontFamily: "'Outfit', sans-serif", color: S.text }}>
@@ -1006,7 +1055,7 @@ export default function Home() {
       <div style={{ background: S.card, borderBottom: `1px solid ${S.border}`, display: 'flex', overflowX: 'auto', WebkitOverflowScrolling: 'touch' } as any}>
         {TABS.map(t => (
           <button key={t} onClick={() => setTab(t)} style={{ padding: '14px 18px', fontSize: 13, fontWeight: tab === t ? 600 : 400, color: tab === t ? S.text : S.text3, background: 'transparent', border: 'none', borderBottom: tab === t ? `2px solid ${S.blue}` : '2px solid transparent', cursor: 'pointer', textTransform: 'capitalize', whiteSpace: 'nowrap' }}>
-            {t === 'bank' ? '🏦 Bank' : t === 'help' ? '❓ Help' : t.charAt(0).toUpperCase() + t.slice(1)}
+            {t === 'bank' ? '🏦 Bank' : t === 'help' ? '❓ Help' : t === 'announcements' ? '📣 Announcements' : t.charAt(0).toUpperCase() + t.slice(1)}
           </button>
         ))}
       </div>
@@ -1021,10 +1070,14 @@ export default function Home() {
                 <textarea id="post-textarea" defaultValue="" onChange={e => { draftRef.current = e.target.value }} placeholder="what happened?" rows={3} dir="ltr" autoComplete="off"
                   style={{ flex: 1, border: 'none', background: 'transparent', color: S.text, fontSize: 16, lineHeight: 1.6, resize: 'none', fontFamily: 'inherit', outline: 'none', direction: 'ltr', unicodeBidi: 'plaintext', textAlign: 'left' } as any} />
               </div>
-              {postImage && (
-                <div style={{ marginBottom: 10, position: 'relative' }}>
-                  <img src={URL.createObjectURL(postImage)} alt="preview" style={{ width: '100%', borderRadius: 10, maxHeight: 200, objectFit: 'contain', background: S.card2 }} />
-                  <button onClick={() => setPostImage(null)} style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,.6)', border: 'none', color: '#fff', borderRadius: '50%', width: 24, height: 24, cursor: 'pointer', fontSize: 12 }}>✕</button>
+              {postImages.length > 0 && (
+                <div style={{ display: 'grid', gridTemplateColumns: postImages.length === 1 ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: 6, marginBottom: 10 }}>
+                  {postImages.map((file, index) => (
+                    <div key={file.name + file.lastModified + index} style={{ position: 'relative' }}>
+                      <img src={URL.createObjectURL(file)} alt={`preview ${index + 1}`} style={{ width: '100%', height: postImages.length === 1 ? 200 : 110, borderRadius: 10, objectFit: 'cover', background: S.card2 }} />
+                      <button onClick={() => setPostImages(images => images.filter((_, i) => i !== index))} style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,.7)', border: 'none', color: '#fff', borderRadius: '50%', width: 24, height: 24, cursor: 'pointer', fontSize: 12 }}>✕</button>
+                    </div>
+                  ))}
                 </div>
               )}
               {selectedTags.length > 0 && (
@@ -1057,16 +1110,22 @@ export default function Home() {
               <div style={{ position: 'relative' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <label style={{ cursor: 'pointer', color: postImage ? S.blue : S.text3, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, border: `1px solid ${postImage ? S.blue : S.border}`, background: postImage ? S.blueDim : 'transparent' }}>
-                      📷 {postImage ? 'Photo added' : 'Add photo'}
-                      <input ref={postImageRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => setPostImage(e.target.files?.[0] || null)} />
+                    <label style={{ cursor: postImages.length >= 3 ? 'default' : 'pointer', color: postImages.length ? S.blue : S.text3, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, border: `1px solid ${postImages.length ? S.blue : S.border}`, background: postImages.length ? S.blueDim : 'transparent', opacity: postImages.length >= 3 ? .7 : 1 }}>
+                      📷 {postImages.length ? `${postImages.length}/3 photos` : 'Add photos'}
+                      <input ref={postImageRef} type="file" accept="image/*" multiple disabled={postImages.length >= 3} style={{ display: 'none' }} onChange={e => {
+                        const picked = Array.from(e.target.files || [])
+                        const remaining = Math.max(0, 3 - postImages.length)
+                        if (picked.length > remaining) notify('You can add up to 3 photos per post', 'neg')
+                        setPostImages(images => [...images, ...picked.slice(0, remaining)])
+                        e.currentTarget.value = ''
+                      }} />
                     </label>
                     <button onClick={() => setShowTagPicker(!showTagPicker)} style={{ cursor: 'pointer', color: selectedTags.length > 0 ? S.blue : S.text3, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, border: `1px solid ${selectedTags.length > 0 ? S.blue : S.border}`, background: selectedTags.length > 0 ? S.blueDim : 'transparent' }}>
                       📍 {selectedTags.length > 0 ? `${selectedTags.length} tagged` : 'Tag people'}
                     </button>
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <button onClick={() => { setComposing(false); draftRef.current = ''; setPostImage(null); setSelectedTags([]); setCalloutMode(false); setCalloutSentiment('good') }} style={{ padding: '7px 16px', borderRadius: 10, fontSize: 13, border: `1px solid ${S.border2}`, background: 'transparent', color: S.text2, cursor: 'pointer' }}>Cancel</button>
+                    <button onClick={() => { setComposing(false); draftRef.current = ''; setPostImages([]); setSelectedTags([]); setCalloutMode(false); setCalloutSentiment('good') }} style={{ padding: '7px 16px', borderRadius: 10, fontSize: 13, border: `1px solid ${S.border2}`, background: 'transparent', color: S.text2, cursor: 'pointer' }}>Cancel</button>
                     <button onClick={handlePost} disabled={posting} style={{ padding: '7px 18px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: 'none', background: posting ? S.border : S.blue, color: posting ? S.text3 : '#fff', cursor: posting ? 'default' : 'pointer' }}>
                       {posting ? '...' : 'Post'}
                     </button>
@@ -1221,6 +1280,33 @@ export default function Home() {
           </Card>
         </>}
 
+        {tab === 'announcements' && <>
+          <Card style={{ padding: 18, marginBottom: 10 }}>
+            <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 5 }}>📣 Aura Announcements</div>
+            <div style={{ fontSize: 12, color: S.text3 }}>Official announcements are saved here after they are sent.</div>
+          </Card>
+          {announcements.length === 0 && (
+            <Card style={{ padding: 22, textAlign: 'center', color: S.text3, fontSize: 13 }}>No archived announcements yet.</Card>
+          )}
+          {announcements.map(a => {
+            const author = profiles.find(p => p.id === a.author_id)
+            return (
+              <Card key={a.id} style={{ padding: 16, marginBottom: 10, borderColor: '#f59e0b44' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 10 }}>
+                  {author && <Av p={author} size={30} />}
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: author ? usernameColor(author) : '#fbbf24' }}>
+                      {author?.username || 'Aura'} {author && isFounder(author) ? '🐐' : ''}
+                    </div>
+                    <div style={{ fontSize: 10, color: S.text3 }}>{timeAgo(a.created_at)}</div>
+                  </div>
+                </div>
+                <div style={{ fontSize: 15, lineHeight: 1.55, color: S.text, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{a.message}</div>
+              </Card>
+            )
+          })}
+        </>}
+
         {tab === 'help' && <>
           {[
             { title: '🔥 What is aura?', body: 'Your score on this site. Post something, people vote on it, your aura goes up or down. Simple.' },
@@ -1234,7 +1320,9 @@ export default function Home() {
             { title: '🤡 Negative aura', body: 'Drop below 0 and clown emojis start showing on your profile. Clown mode now has escalating tiers: Clown, Big Clown, and Mega Clown. Positive gains are taxed 25%, 35%, or 50% into the prize pool, while negative users get a larger daily comeback check-in.' },
             { title: '🏆 Prize pool', body: 'Every Monday at 00:00 UTC, whoever had the highest-aura post in the completed week wins the entire pool. The pool only fills when users with negative aura receive positive gains; clown-tax rates are 25%, 35%, or 50% depending on their negative-aura tier.' },
             { title: '🔥 Streaks', body: 'Hit Check In every day for +5 aura, or +7 while in clown mode. Miss a day and your streak resets and you lose 2 aura per missed day (max 20). Log in daily or fall behind.' },
-            { title: '🚫 Glazing', body: "Max 3 big votes (+50 or -50) to the same person per 24 hours. Go over that and you get hit with -50. Don't glaze." },
+            { title: '📷 Photos', body: 'Posts can include up to 3 photos. Aura compresses new uploads so they load faster and use less data.' },
+            { title: '⏱️ Post rate limit', body: 'You can make at most 2 posts in any rolling 5-minute window. A third post is blocked until enough time passes.' },
+            { title: '🚫 Glazing', body: "Your third large vote of 50 Aura or more to the same person within 24 hours triggers a -50 anti-glaze penalty. Custom votes count exactly the same as preset votes, so custom voting cannot bypass the rule." },
             { title: '💬 Comments', body: 'Tap the comment button on any post to see and leave comments.' },
             { title: '📒 Ledger', body: 'Go to your Profile and tap Ledger to see every aura transaction — what you gained, lost, and when.' },
             { title: '⭐ All-time aura', body: 'Your highest aura ever. Shows on your profile and leaderboard. Even if you lose aura, your all-time record stays.' },
