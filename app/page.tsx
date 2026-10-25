@@ -631,34 +631,52 @@ export default function Home() {
       notify('A callout must tag at least one person', 'neg')
       return
     }
+    if (postImages.length > 3) {
+      notify('You can add up to 3 photos per post', 'neg')
+      return
+    }
+
     setPosting(true)
-    let image_url = null
-    if (postImage) {
-      const optimized = await optimizeImage(postImage, 1600, 0.78)
+    const imageUrls: string[] = []
+    const uploadedPaths: string[] = []
+
+    for (let index = 0; index < postImages.length; index++) {
+      const optimized = await optimizeImage(postImages[index], 1600, 0.78)
       const ext = imageExt(optimized)
-      const path = `${profile.id}-${Date.now()}.${ext}`
+      const path = `${profile.id}-${Date.now()}-${index}.${ext}`
       const { error: uploadError } = await supabase.storage.from('posts').upload(path, optimized, {
         upsert: true,
         cacheControl: '31536000',
         contentType: optimized.type || undefined,
       })
       if (uploadError) {
+        if (uploadedPaths.length) await supabase.storage.from('posts').remove(uploadedPaths)
         notify(`Photo upload failed: ${uploadError.message}`, 'neg')
         setPosting(false)
         return
       }
+      uploadedPaths.push(path)
       const { data: urlData } = supabase.storage.from('posts').getPublicUrl(path)
-      image_url = urlData.publicUrl
+      imageUrls.push(urlData.publicUrl)
     }
+
     const { data, error: postError } = await supabase.from('posts').insert({
       user_id: profile.id,
       text: draftRef.current.trim(),
       aura: 0,
-      image_url,
+      image_url: imageUrls[0] || null,
+      image_urls: imageUrls,
       callout_target_id: calloutMode ? selectedTags[0] : null,
       callout_sentiment: calloutMode ? calloutSentiment : null,
     }).select('*').single()
-    if (postError) { notify(`Could not post: ${postError.message}`, 'neg'); setPosting(false); return }
+
+    if (postError) {
+      if (uploadedPaths.length) await supabase.storage.from('posts').remove(uploadedPaths)
+      notify(`Could not post: ${postError.message}`, 'neg')
+      setPosting(false)
+      return
+    }
+
     if (data) {
       if (selectedTags.length > 0) {
         await supabase.from('post_tags').insert(selectedTags.map(uid => ({ post_id: data.id, tagged_user_id: uid })))
@@ -668,7 +686,7 @@ export default function Home() {
       draftRef.current = ''
       const ta = document.getElementById('post-textarea') as HTMLTextAreaElement
       if (ta) ta.value = ''
-      setPostImage(null)
+      setPostImages([])
       setSelectedTags([])
       setCalloutMode(false)
       setCalloutSentiment('good')
