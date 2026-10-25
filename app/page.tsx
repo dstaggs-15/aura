@@ -718,6 +718,7 @@ export default function Home() {
       })
       if (error) throw error
       notify(`Announcement sent to ${data?.sent ?? 0} device${data?.sent === 1 ? '' : 's'} 🔥`, 'pos')
+      await loadAll(profile.id)
       announceRef.current = ''
       const box = document.getElementById('announce-text') as HTMLTextAreaElement | null
       if (box) box.value = ''
@@ -1279,6 +1280,33 @@ export default function Home() {
           </Card>
         </>}
 
+        {tab === 'announcements' && <>
+          <Card style={{ padding: 18, marginBottom: 10 }}>
+            <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 5 }}>📣 Aura Announcements</div>
+            <div style={{ fontSize: 12, color: S.text3 }}>Official announcements are saved here after they are sent.</div>
+          </Card>
+          {announcements.length === 0 && (
+            <Card style={{ padding: 22, textAlign: 'center', color: S.text3, fontSize: 13 }}>No archived announcements yet.</Card>
+          )}
+          {announcements.map(a => {
+            const author = profiles.find(p => p.id === a.author_id)
+            return (
+              <Card key={a.id} style={{ padding: 16, marginBottom: 10, borderColor: '#f59e0b44' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 10 }}>
+                  {author && <Av p={author} size={30} />}
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: author ? usernameColor(author) : '#fbbf24' }}>
+                      {author?.username || 'Aura'} {author && isFounder(author) ? '🐐' : ''}
+                    </div>
+                    <div style={{ fontSize: 10, color: S.text3 }}>{timeAgo(a.created_at)}</div>
+                  </div>
+                </div>
+                <div style={{ fontSize: 15, lineHeight: 1.55, color: S.text, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{a.message}</div>
+              </Card>
+            )
+          })}
+        </>}
+
         {tab === 'help' && <>
           {[
             { title: '🔥 What is aura?', body: 'Your score on this site. Post something, people vote on it, your aura goes up or down. Simple.' },
@@ -1292,7 +1320,9 @@ export default function Home() {
             { title: '🤡 Negative aura', body: 'Drop below 0 and clown emojis start showing on your profile. Clown mode now has escalating tiers: Clown, Big Clown, and Mega Clown. Positive gains are taxed 25%, 35%, or 50% into the prize pool, while negative users get a larger daily comeback check-in.' },
             { title: '🏆 Prize pool', body: 'Every Monday at 00:00 UTC, whoever had the highest-aura post in the completed week wins the entire pool. The pool only fills when users with negative aura receive positive gains; clown-tax rates are 25%, 35%, or 50% depending on their negative-aura tier.' },
             { title: '🔥 Streaks', body: 'Hit Check In every day for +5 aura, or +7 while in clown mode. Miss a day and your streak resets and you lose 2 aura per missed day (max 20). Log in daily or fall behind.' },
-            { title: '🚫 Glazing', body: "Max 3 big votes (+50 or -50) to the same person per 24 hours. Go over that and you get hit with -50. Don't glaze." },
+            { title: '📷 Photos', body: 'Posts can include up to 3 photos. Aura compresses new uploads so they load faster and use less data.' },
+            { title: '⏱️ Post rate limit', body: 'You can make at most 2 posts in any rolling 5-minute window. A third post is blocked until enough time passes.' },
+            { title: '🚫 Glazing', body: "Your third large vote of 50 Aura or more to the same person within 24 hours triggers a -50 anti-glaze penalty. Custom votes count exactly the same as preset votes, so custom voting cannot bypass the rule." },
             { title: '💬 Comments', body: 'Tap the comment button on any post to see and leave comments.' },
             { title: '📒 Ledger', body: 'Go to your Profile and tap Ledger to see every aura transaction — what you gained, lost, and when.' },
             { title: '⭐ All-time aura', body: 'Your highest aura ever. Shows on your profile and leaderboard. Even if you lose aura, your all-time record stays.' },
