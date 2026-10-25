@@ -25,6 +25,7 @@ export type Post = {
   user_id: string
   text: string
   image_url: string | null
+  image_urls: string[]
   aura: number
   created_at: string
   callout_target_id: string | null
@@ -92,5 +93,12 @@ export type Notification = {
   post_id: number | null
   message: string
   read_at: string | null
+  created_at: string
+}
+
+export type Announcement = {
+  id: number
+  author_id: string
+  message: string
   created_at: string
 }
