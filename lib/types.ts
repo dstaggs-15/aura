@@ -9,6 +9,8 @@ export type Profile = {
   aura_all_time: number
   streak: number
   last_checkin: string | null
+  last_post_activity_at: string
+  post_inactivity_stage: number
   created_at: string
   is_member: boolean
   notify_new_posts: boolean
