@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useRef, memo } from 'react'
 import { supabase } from '@/lib/supabase'
-import { Profile, Post, Comment, LedgerEntry, Friendship } from '@/lib/types'
+import { Profile, Post, Comment, LedgerEntry, Friendship, Announcement } from '@/lib/types'
 
 const VOTE_OPTS = [-50, -25, -10, -5, -1, 1, 5, 10, 25, 50]
 const fmtAura = (n: number) => (n >= 0 ? "+" : "") + n.toLocaleString()
@@ -381,7 +381,7 @@ export default function Home() {
   const [filter, setFilter] = useState('recent')
   const [composing, setComposing] = useState(false)
   const [posting, setPosting] = useState(false)
-  const [postImage, setPostImage] = useState<File | null>(null)
+  const [postImages, setPostImages] = useState<File[]>([])
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [showTagPicker, setShowTagPicker] = useState(false)
   const [calloutMode, setCalloutMode] = useState(false)
@@ -403,6 +403,7 @@ export default function Home() {
   const [showCustomize, setShowCustomize] = useState(false)
   const [showAnnounce, setShowAnnounce] = useState(false)
   const [announceBusy, setAnnounceBusy] = useState(false)
+  const [announcements, setAnnouncements] = useState<Announcement[]>([])
   const [friendships, setFriendships] = useState<Friendship[]>([])
   const [pushEnabled, setPushEnabled] = useState(false)
   const [pushBusy, setPushBusy] = useState(false)
@@ -446,7 +447,7 @@ export default function Home() {
     const run = (async () => {
       const [
         { data: profs }, { data: ps }, { data: bucket }, { data: vs },
-        { data: counts }, { data: tags }, { data: pvs }, { data: friendshipRows }, { data: allVotes },
+        { data: counts }, { data: tags }, { data: pvs }, { data: friendshipRows }, { data: allVotes }, { data: announcementRows },
       ] = await Promise.all([
         supabase.from('profiles').select('*'),
         supabase.from('posts').select('*').order('created_at', { ascending: false }),
@@ -457,6 +458,7 @@ export default function Home() {
         supabase.from('profile_votes').select('*').eq('voter_id', uid),
         supabase.from('friendships').select('*').order('created_at', { ascending: false }),
         supabase.from('votes').select('post_id,voter_id,value'),
+        supabase.from('announcements').select('*').order('created_at', { ascending: false }).limit(100),
       ])
 
       if (profs) {
@@ -482,6 +484,7 @@ export default function Home() {
       if (pvs) { const m: Record<string, number> = {}; pvs.forEach((v: any) => m[v.target_id] = v.value); setProfileVotes(m) }
       if (friendshipRows) setFriendships(friendshipRows)
       if (allVotes) setAllPostVotes(allVotes)
+      if (announcementRows) setAnnouncements(announcementRows)
     })()
 
     loadPromiseRef.current = run
@@ -842,7 +845,7 @@ export default function Home() {
   )
 
   const otherProfiles = profiles.filter(p => p.id !== profile.id)
-  const TABS = ['feed', 'leaderboard', 'friends', 'bank', 'help', 'profile']
+  const TABS = ['feed', 'announcements', 'leaderboard', 'friends', 'bank', 'help', 'profile']
 
   return (
     <div style={{ minHeight: '100vh', width: '100%', maxWidth: '100vw', overflowX: 'hidden', background: S.bg, fontFamily: "'Outfit', sans-serif", color: S.text }}>
@@ -1006,7 +1009,7 @@ export default function Home() {
       <div style={{ background: S.card, borderBottom: `1px solid ${S.border}`, display: 'flex', overflowX: 'auto', WebkitOverflowScrolling: 'touch' } as any}>
         {TABS.map(t => (
           <button key={t} onClick={() => setTab(t)} style={{ padding: '14px 18px', fontSize: 13, fontWeight: tab === t ? 600 : 400, color: tab === t ? S.text : S.text3, background: 'transparent', border: 'none', borderBottom: tab === t ? `2px solid ${S.blue}` : '2px solid transparent', cursor: 'pointer', textTransform: 'capitalize', whiteSpace: 'nowrap' }}>
-            {t === 'bank' ? '🏦 Bank' : t === 'help' ? '❓ Help' : t.charAt(0).toUpperCase() + t.slice(1)}
+            {t === 'bank' ? '🏦 Bank' : t === 'help' ? '❓ Help' : t === 'announcements' ? '📣 Announcements' : t.charAt(0).toUpperCase() + t.slice(1)}
           </button>
         ))}
       </div>
