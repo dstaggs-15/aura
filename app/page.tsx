@@ -222,6 +222,7 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
   const [editingPost, setEditingPost] = useState(false)
   const [editText, setEditText] = useState(post.text)
   const [replyingTo, setReplyingTo] = useState<number | null>(null)
+  const [activePhoto, setActivePhoto] = useState(0)
   const postImageUrls = Array.isArray(post.image_urls) && post.image_urls.length > 0
     ? post.image_urls.slice(0, 3)
     : (post.image_url ? [post.image_url] : [])
@@ -267,30 +268,55 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
             </div>
           )}
           {postImageUrls.length > 0 && (
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: postImageUrls.length === 1 ? '1fr' : 'repeat(2, minmax(0, 1fr))',
-              gap: 5,
-              marginTop: 10,
-            }}>
-              {postImageUrls.map((url: string, index: number) => (
-                <img
-                  key={url + index}
-                  src={url}
-                  alt={postImageUrls.length === 1 ? 'post' : `post photo ${index + 1}`}
-                  loading="lazy"
-                  decoding="async"
-                  style={{
-                    width: '100%',
-                    height: postImageUrls.length === 1 ? 'auto' : (index === 0 && postImageUrls.length === 3 ? 240 : 180),
-                    gridColumn: postImageUrls.length === 3 && index === 0 ? '1 / -1' : undefined,
-                    borderRadius: 10,
-                    maxHeight: postImageUrls.length === 1 ? 430 : undefined,
-                    objectFit: 'cover',
-                    background: S.card2,
-                  }}
-                />
-              ))}
+            <div style={{ position: 'relative', marginTop: 10 }}>
+              <div
+                className="photo-carousel"
+                onScroll={e => {
+                  const el = e.currentTarget
+                  const next = Math.round(el.scrollLeft / Math.max(1, el.clientWidth))
+                  if (next !== activePhoto) setActivePhoto(next)
+                }}
+                style={{
+                  display: 'flex',
+                  overflowX: 'auto',
+                  scrollSnapType: 'x mandatory',
+                  WebkitOverflowScrolling: 'touch',
+                  borderRadius: 10,
+                  background: S.card2,
+                  scrollbarWidth: 'none',
+                } as any}
+              >
+                {postImageUrls.map((url: string, index: number) => (
+                  <div key={url + index} style={{ flex: '0 0 100%', width: '100%', scrollSnapAlign: 'start', scrollSnapStop: 'always' }}>
+                    <img
+                      src={url}
+                      alt={postImageUrls.length === 1 ? 'post' : `post photo ${index + 1}`}
+                      loading="lazy"
+                      decoding="async"
+                      draggable={false}
+                      style={{
+                        display: 'block',
+                        width: '100%',
+                        height: 'min(68vh, 520px)',
+                        objectFit: 'contain',
+                        background: S.card2,
+                      }}
+                    />
+                  </div>
+                ))}
+              </div>
+              {postImageUrls.length > 1 && (
+                <>
+                  <div style={{ position: 'absolute', top: 9, right: 9, padding: '3px 8px', borderRadius: 12, background: 'rgba(0,0,0,.65)', color: '#fff', fontSize: 10, fontWeight: 700 }}>
+                    {activePhoto + 1}/{postImageUrls.length}
+                  </div>
+                  <div style={{ position: 'absolute', left: '50%', bottom: 9, transform: 'translateX(-50%)', display: 'flex', gap: 5, padding: '4px 7px', borderRadius: 12, background: 'rgba(0,0,0,.45)' }}>
+                    {postImageUrls.map((_: string, index: number) => (
+                      <span key={index} style={{ width: 6, height: 6, borderRadius: '50%', background: index === activePhoto ? '#fff' : 'rgba(255,255,255,.4)' }} />
+                    ))}
+                  </div>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -903,6 +929,7 @@ export default function Home() {
         ::-webkit-scrollbar { width: 4px; }
         ::-webkit-scrollbar-track { background: ${S.bg}; }
         ::-webkit-scrollbar-thumb { background: ${S.border2}; border-radius: 4px; }
+        .photo-carousel::-webkit-scrollbar { display: none; }
         textarea, input[type="text"], input[type="email"], input[type="password"] {
           direction: ltr !important; unicode-bidi: plaintext !important; text-align: left !important;
         }
@@ -1322,6 +1349,7 @@ export default function Home() {
             { title: '🔥 Streaks', body: 'Hit Check In every day for +5 aura, or +7 while in clown mode. Miss a day and your streak resets and you lose 2 aura per missed day (max 20). Log in daily or fall behind.' },
             { title: '📷 Photos', body: 'Posts can include up to 3 photos. Aura compresses new uploads so they load faster and use less data.' },
             { title: '⏱️ Post rate limit', body: 'You can make at most 2 posts in any rolling 5-minute window. A third post is blocked until enough time passes.' },
+            { title: '⌛ Posting inactivity', body: 'Aura now rewards staying active: no post for 3 days costs 10 Aura, reaching 6 days without a post costs another 50 Aura, and reaching 10.5 days costs another 150 Aura. Posting resets the inactivity ladder.' },
             { title: '🚫 Glazing', body: "Your third large vote of 50 Aura or more to the same person within 24 hours triggers a -50 anti-glaze penalty. Custom votes count exactly the same as preset votes, so custom voting cannot bypass the rule." },
             { title: '💬 Comments', body: 'Tap the comment button on any post to see and leave comments.' },
             { title: '📒 Ledger', body: 'Go to your Profile and tap Ledger to see every aura transaction — what you gained, lost, and when.' },
