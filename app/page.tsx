@@ -1069,10 +1069,14 @@ export default function Home() {
                 <textarea id="post-textarea" defaultValue="" onChange={e => { draftRef.current = e.target.value }} placeholder="what happened?" rows={3} dir="ltr" autoComplete="off"
                   style={{ flex: 1, border: 'none', background: 'transparent', color: S.text, fontSize: 16, lineHeight: 1.6, resize: 'none', fontFamily: 'inherit', outline: 'none', direction: 'ltr', unicodeBidi: 'plaintext', textAlign: 'left' } as any} />
               </div>
-              {postImage && (
-                <div style={{ marginBottom: 10, position: 'relative' }}>
-                  <img src={URL.createObjectURL(postImage)} alt="preview" style={{ width: '100%', borderRadius: 10, maxHeight: 200, objectFit: 'contain', background: S.card2 }} />
-                  <button onClick={() => setPostImage(null)} style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,.6)', border: 'none', color: '#fff', borderRadius: '50%', width: 24, height: 24, cursor: 'pointer', fontSize: 12 }}>✕</button>
+              {postImages.length > 0 && (
+                <div style={{ display: 'grid', gridTemplateColumns: postImages.length === 1 ? '1fr' : 'repeat(3, minmax(0, 1fr))', gap: 6, marginBottom: 10 }}>
+                  {postImages.map((file, index) => (
+                    <div key={file.name + file.lastModified + index} style={{ position: 'relative' }}>
+                      <img src={URL.createObjectURL(file)} alt={`preview ${index + 1}`} style={{ width: '100%', height: postImages.length === 1 ? 200 : 110, borderRadius: 10, objectFit: 'cover', background: S.card2 }} />
+                      <button onClick={() => setPostImages(images => images.filter((_, i) => i !== index))} style={{ position: 'absolute', top: 6, right: 6, background: 'rgba(0,0,0,.7)', border: 'none', color: '#fff', borderRadius: '50%', width: 24, height: 24, cursor: 'pointer', fontSize: 12 }}>✕</button>
+                    </div>
+                  ))}
                 </div>
               )}
               {selectedTags.length > 0 && (
@@ -1105,16 +1109,22 @@ export default function Home() {
               <div style={{ position: 'relative' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <label style={{ cursor: 'pointer', color: postImage ? S.blue : S.text3, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, border: `1px solid ${postImage ? S.blue : S.border}`, background: postImage ? S.blueDim : 'transparent' }}>
-                      📷 {postImage ? 'Photo added' : 'Add photo'}
-                      <input ref={postImageRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => setPostImage(e.target.files?.[0] || null)} />
+                    <label style={{ cursor: postImages.length >= 3 ? 'default' : 'pointer', color: postImages.length ? S.blue : S.text3, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, border: `1px solid ${postImages.length ? S.blue : S.border}`, background: postImages.length ? S.blueDim : 'transparent', opacity: postImages.length >= 3 ? .7 : 1 }}>
+                      📷 {postImages.length ? `${postImages.length}/3 photos` : 'Add photos'}
+                      <input ref={postImageRef} type="file" accept="image/*" multiple disabled={postImages.length >= 3} style={{ display: 'none' }} onChange={e => {
+                        const picked = Array.from(e.target.files || [])
+                        const remaining = Math.max(0, 3 - postImages.length)
+                        if (picked.length > remaining) notify('You can add up to 3 photos per post', 'neg')
+                        setPostImages(images => [...images, ...picked.slice(0, remaining)])
+                        e.currentTarget.value = ''
+                      }} />
                     </label>
                     <button onClick={() => setShowTagPicker(!showTagPicker)} style={{ cursor: 'pointer', color: selectedTags.length > 0 ? S.blue : S.text3, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8, border: `1px solid ${selectedTags.length > 0 ? S.blue : S.border}`, background: selectedTags.length > 0 ? S.blueDim : 'transparent' }}>
                       📍 {selectedTags.length > 0 ? `${selectedTags.length} tagged` : 'Tag people'}
                     </button>
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <button onClick={() => { setComposing(false); draftRef.current = ''; setPostImage(null); setSelectedTags([]); setCalloutMode(false); setCalloutSentiment('good') }} style={{ padding: '7px 16px', borderRadius: 10, fontSize: 13, border: `1px solid ${S.border2}`, background: 'transparent', color: S.text2, cursor: 'pointer' }}>Cancel</button>
+                    <button onClick={() => { setComposing(false); draftRef.current = ''; setPostImages([]); setSelectedTags([]); setCalloutMode(false); setCalloutSentiment('good') }} style={{ padding: '7px 16px', borderRadius: 10, fontSize: 13, border: `1px solid ${S.border2}`, background: 'transparent', color: S.text2, cursor: 'pointer' }}>Cancel</button>
                     <button onClick={handlePost} disabled={posting} style={{ padding: '7px 18px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: 'none', background: posting ? S.border : S.blue, color: posting ? S.text3 : '#fff', cursor: posting ? 'default' : 'pointer' }}>
                       {posting ? '...' : 'Post'}
                     </button>
