@@ -222,6 +222,9 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
   const [editingPost, setEditingPost] = useState(false)
   const [editText, setEditText] = useState(post.text)
   const [replyingTo, setReplyingTo] = useState<number | null>(null)
+  const postImageUrls = Array.isArray(post.image_urls) && post.image_urls.length > 0
+    ? post.image_urls.slice(0, 3)
+    : (post.image_url ? [post.image_url] : [])
 
   return (
     <Card style={{ marginBottom: 8 }}>
@@ -263,8 +266,32 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
               ))}
             </div>
           )}
-          {post.image_url && (
-            <img src={post.image_url} alt="post" loading="lazy" decoding="async" style={{ width: '100%', borderRadius: 10, marginTop: 10, maxHeight: 400, objectFit: 'contain', background: S.card2 }} />
+          {postImageUrls.length > 0 && (
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: postImageUrls.length === 1 ? '1fr' : 'repeat(2, minmax(0, 1fr))',
+              gap: 5,
+              marginTop: 10,
+            }}>
+              {postImageUrls.map((url: string, index: number) => (
+                <img
+                  key={url + index}
+                  src={url}
+                  alt={postImageUrls.length === 1 ? 'post' : `post photo ${index + 1}`}
+                  loading="lazy"
+                  decoding="async"
+                  style={{
+                    width: '100%',
+                    height: postImageUrls.length === 1 ? 'auto' : (index === 0 && postImageUrls.length === 3 ? 240 : 180),
+                    gridColumn: postImageUrls.length === 3 && index === 0 ? '1 / -1' : undefined,
+                    borderRadius: 10,
+                    maxHeight: postImageUrls.length === 1 ? 430 : undefined,
+                    objectFit: 'cover',
+                    background: S.card2,
+                  }}
+                />
+              ))}
+            </div>
           )}
         </div>
       </div>
