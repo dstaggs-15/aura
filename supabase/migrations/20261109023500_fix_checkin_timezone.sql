@@ -186,3 +186,9 @@ begin
     );
   end if;
 end $$;
+
+
+revoke execute on function public.daily_checkin() from public, anon;
+grant execute on function public.daily_checkin() to authenticated;
+
+revoke execute on function public.apply_inactivity_penalties_daily() from public, anon, authenticated;
