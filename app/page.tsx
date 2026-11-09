@@ -4,6 +4,17 @@ import { supabase } from '@/lib/supabase'
 import { Profile, Post, Comment, LedgerEntry, Friendship, Announcement } from '@/lib/types'
 
 const VOTE_OPTS = [-50, -25, -10, -5, -1, 1, 5, 10, 25, 50]
+const AURA_TIME_ZONE = 'America/Chicago'
+const auraToday = () => {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: AURA_TIME_ZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date())
+  const get = (type: string) => parts.find(p => p.type === type)?.value || ''
+  return `${get('year')}-${get('month')}-${get('day')}`
+}
 const fmtAura = (n: number) => (n >= 0 ? "+" : "") + n.toLocaleString()
 const clownCount = (a: number) => a < -499 ? 3 : a < -99 ? 2 : a < 0 ? 1 : 0
 const clownTitle = (a: number) => a <= -500 ? 'Mega Clown' : a <= -100 ? 'Big Clown' : a < 0 ? 'Clown' : null
@@ -199,7 +210,7 @@ const renderText = (text: string, color = '#ccc') => {
   )
 }
 
-const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount, isCommentsOpen, tags, commentVotes, postVotes, onVote, onCommentVote, onOpenProfile, onToggleComments, onComment, onEdit }: {
+const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount, isCommentsOpen, tags, commentVotes, postVotes, onVote, onCommentVote, onOpenProfile, onToggleComments, onComment, onEdit, onLoadVotes }: {
   post: any; profile: any; profiles: any[]; myVote: number | undefined;
   comments: any[]; commentCount: number; isCommentsOpen: boolean; tags: string[]; commentVotes: Record<number, number>; postVotes: any[];
   onVote: (postId: number, val: number) => void; onCommentVote: (commentId: number, val: number) => void;
@@ -207,6 +218,7 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
   onToggleComments: (postId: number) => void;
   onComment: (postId: number, text: string, parentCommentId?: number | null) => Promise<boolean>;
   onEdit: (postId: number, text: string) => Promise<boolean>;
+  onLoadVotes: (postId: number) => Promise<void>;
 }) => {
   const owner = profiles.find((p: any) => p.id === post.user_id)
   if (!owner) return null
@@ -218,6 +230,7 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
     ? (taggedUsers.length > 0 ? taggedUsers : (fallbackCalloutTarget ? [fallbackCalloutTarget] : []))
     : []
   const [showVotes, setShowVotes] = useState(false)
+  const [votesLoading, setVotesLoading] = useState(false)
   const [customVote, setCustomVote] = useState('')
   const [editingPost, setEditingPost] = useState(false)
   const [editText, setEditText] = useState(post.text)
@@ -323,7 +336,15 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
       </div>
 
       <div style={{ padding: '10px 16px 12px', borderTop: `1px solid ${S.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-        <button onClick={() => setShowVotes(!showVotes)} style={{ background: 'transparent', border: 'none', padding: 0, fontFamily: 'monospace', fontSize: 14, fontWeight: 700, color: post.aura >= 0 ? S.blue : S.red, cursor: 'pointer' }}>{fmtAura(post.aura)}</button>
+        <button onClick={async () => {
+          const next = !showVotes
+          setShowVotes(next)
+          if (next) {
+            setVotesLoading(true)
+            await onLoadVotes(post.id)
+            setVotesLoading(false)
+          }
+        }} style={{ background: 'transparent', border: 'none', padding: 0, fontFamily: 'monospace', fontSize: 14, fontWeight: 700, color: post.aura >= 0 ? S.blue : S.red, cursor: 'pointer' }}>{fmtAura(post.aura)}</button>
         {isOwn
           ? <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
               <span style={{ fontSize: 11, color: S.text3 }}>your post</span>
@@ -354,7 +375,11 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
       </div>
 
       {showVotes && <div style={{ padding: '8px 16px 10px', borderTop: `1px solid ${S.border}`, fontSize: 12 }}>
-        {postVotes.length === 0 ? <span style={{ color: S.text3 }}>No votes yet.</span> : postVotes.map((v: any) => { const vp=profiles.find((p:any)=>p.id===v.voter_id); return <div key={v.voter_id} style={{ display:'flex',justifyContent:'space-between',padding:'4px 0' }}><span style={{ color: vp ? usernameColor(vp) : S.text2 }}>@{vp?.username || 'user'}</span><b style={{ color:v.value>=0?S.blue:S.red }}>{fmtAura(v.value)}</b></div> })}
+        {votesLoading
+          ? <span style={{ color: S.text3 }}>Loading votes...</span>
+          : postVotes.length === 0
+            ? <span style={{ color: S.text3 }}>No votes yet.</span>
+            : postVotes.map((v: any) => { const vp=profiles.find((p:any)=>p.id===v.voter_id); return <div key={v.voter_id} style={{ display:'flex',justifyContent:'space-between',padding:'4px 0' }}><span style={{ color: vp ? usernameColor(vp) : S.text2 }}>@{vp?.username || 'user'}</span><b style={{ color:v.value>=0?S.blue:S.red }}>{fmtAura(v.value)}</b></div> })}
       </div>}
       <div style={{ borderTop: `1px solid ${S.border}` }}>
         <button onClick={() => onToggleComments(post.id)} style={{ width: '100%', padding: '10px 16px', background: 'transparent', border: 'none', color: S.text3, fontSize: 12, cursor: 'pointer', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -500,7 +525,7 @@ export default function Home() {
     const run = (async () => {
       const [
         { data: profs }, { data: ps }, { data: bucket }, { data: vs },
-        { data: counts }, { data: tags }, { data: pvs }, { data: friendshipRows }, { data: allVotes }, { data: announcementRows },
+        { data: counts }, { data: tags }, { data: pvs }, { data: friendshipRows }, { data: announcementRows },
       ] = await Promise.all([
         supabase.from('profiles').select('*'),
         supabase.from('posts').select('*').order('created_at', { ascending: false }),
@@ -510,7 +535,6 @@ export default function Home() {
         supabase.from('post_tags').select('*'),
         supabase.from('profile_votes').select('*').eq('voter_id', uid),
         supabase.from('friendships').select('*').order('created_at', { ascending: false }),
-        supabase.from('votes').select('post_id,voter_id,value'),
         supabase.from('announcements').select('*').order('created_at', { ascending: false }).limit(100),
       ])
 
@@ -536,7 +560,6 @@ export default function Home() {
       }
       if (pvs) { const m: Record<string, number> = {}; pvs.forEach((v: any) => m[v.target_id] = v.value); setProfileVotes(m) }
       if (friendshipRows) setFriendships(friendshipRows)
-      if (allVotes) setAllPostVotes(allVotes)
       if (announcementRows) setAnnouncements(announcementRows)
     })()
 
@@ -577,6 +600,21 @@ export default function Home() {
     toastTimer.current = setTimeout(() => setToast(null), 2400)
   }
 
+  const loadVotesForPost = async (postId: number) => {
+    const { data, error } = await supabase.from('votes')
+      .select('post_id,voter_id,value')
+      .eq('post_id', postId)
+      .order('value', { ascending: false })
+    if (error) {
+      console.warn('Could not load post votes:', error.message)
+      return
+    }
+    setAllPostVotes(current => [
+      ...current.filter(v => v.post_id !== postId),
+      ...(data || []),
+    ])
+  }
+
   const handleVote = async (postId: number, val: number) => {
     if (!profile) return
     const { data, error } = await supabase.rpc('cast_post_vote', { p_post_id: postId, p_value: val })
@@ -584,6 +622,7 @@ export default function Home() {
     if (data?.reason === 'anti_glaze') notify('🚫 Anti-glaze penalty: −50 aura', 'neg')
     else notify(val > 0 ? `+${val} vote sent` : `${val} vote sent`, val > 0 ? 'pos' : 'neg')
     await loadAll(profile.id)
+    await loadVotesForPost(postId)
   }
 
   const handleProfileVote = async (targetId: string, val: number) => {
@@ -891,7 +930,7 @@ export default function Home() {
     window.location.href = '/auth'
   }
 
-  const checkedInToday = profile?.last_checkin === new Date().toISOString().split('T')[0]
+  const checkedInToday = profile?.last_checkin === auraToday()
   const weeklyPosts = posts.filter(p => new Date(p.created_at) >= currentWeekStart())
   const topPost = [...weeklyPosts].sort((a, b) => b.aura - a.aura)[0]
   const topPostUser = topPost ? profiles.find(p => p.id === topPost.user_id) : null
@@ -1183,7 +1222,7 @@ export default function Home() {
               comments={comments[p.id] || []} commentCount={commentCounts[p.id] || 0}
               isCommentsOpen={openComments[p.id] || false} tags={postTags[p.id] || []} commentVotes={commentVotes} postVotes={allPostVotes.filter(v => v.post_id === p.id)}
               onVote={handleVote} onCommentVote={handleCommentVote} onOpenProfile={setModalProfile}
-              onToggleComments={handleToggleComments} onComment={handleComment} onEdit={handleEditPost} />
+              onToggleComments={handleToggleComments} onComment={handleComment} onEdit={handleEditPost} onLoadVotes={loadVotesForPost} />
           ))}
         </>}
 
@@ -1563,7 +1602,7 @@ export default function Home() {
                 comments={comments[p.id] || []} commentCount={commentCounts[p.id] || 0}
                 isCommentsOpen={openComments[p.id] || false} tags={postTags[p.id] || []} commentVotes={commentVotes} postVotes={allPostVotes.filter(v => v.post_id === p.id)}
                 onVote={handleVote} onCommentVote={handleCommentVote} onOpenProfile={setModalProfile}
-                onToggleComments={handleToggleComments} onComment={handleComment} onEdit={handleEditPost} />
+                onToggleComments={handleToggleComments} onComment={handleComment} onEdit={handleEditPost} onLoadVotes={loadVotesForPost} />
             ))
           }
         </>}
