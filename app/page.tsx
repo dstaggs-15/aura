@@ -236,9 +236,13 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
   const [editText, setEditText] = useState(post.text)
   const [replyingTo, setReplyingTo] = useState<number | null>(null)
   const [activePhoto, setActivePhoto] = useState(0)
+  const [showLegacyPhotos, setShowLegacyPhotos] = useState(false)
   const postImageUrls = Array.isArray(post.image_urls) && post.image_urls.length > 0
     ? post.image_urls.slice(0, 3)
     : (post.image_url ? [post.image_url] : [])
+  const isLegacyHeavyPost = postImageUrls.length > 0
+    && postImageUrls.some((url: string) => !/\.webp(?:\?|$)/i.test(url))
+  const shouldRenderPhotos = !isLegacyHeavyPost || showLegacyPhotos
 
   return (
     <Card style={{ marginBottom: 8 }}>
@@ -280,7 +284,27 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
               ))}
             </div>
           )}
-          {postImageUrls.length > 0 && (
+          {postImageUrls.length > 0 && !shouldRenderPhotos && (
+            <button
+              onClick={() => setShowLegacyPhotos(true)}
+              style={{
+                width: '100%',
+                marginTop: 10,
+                padding: '28px 14px',
+                borderRadius: 10,
+                border: `1px solid ${S.border2}`,
+                background: S.card2,
+                color: S.text2,
+                cursor: 'pointer',
+                fontSize: 13,
+                fontWeight: 600,
+              }}
+            >
+              📷 Tap to load {postImageUrls.length > 1 ? `${postImageUrls.length} photos` : 'photo'}
+              <div style={{ marginTop: 5, fontSize: 10, fontWeight: 400, color: S.text3 }}>Data saver for older full-size uploads</div>
+            </button>
+          )}
+          {postImageUrls.length > 0 && shouldRenderPhotos && (
             <div style={{ position: 'relative', marginTop: 10 }}>
               <div
                 className="photo-carousel"
@@ -1083,7 +1107,11 @@ export default function Home() {
               {posts.filter(p => p.user_id === modalProfile.id).map(p => (
                 <div key={p.id} style={{ background: S.card2, borderRadius: 10, padding: '10px 13px', marginBottom: 8 }}>
                   <p style={{ fontSize: 13, color: '#ccc', marginBottom: 6, lineHeight: 1.5 }}>{p.text}</p>
-                  {p.image_url && <img src={p.image_url} alt="post" loading="lazy" decoding="async" style={{ width: '100%', borderRadius: 8, marginBottom: 6, maxHeight: 200, objectFit: 'contain', background: S.card }} />}
+                  {p.image_url && (
+                    /\.webp(?:\?|$)/i.test(p.image_url)
+                      ? <img src={p.image_url} alt="post" loading="lazy" decoding="async" style={{ width: '100%', borderRadius: 8, marginBottom: 6, maxHeight: 200, objectFit: 'contain', background: S.card }} />
+                      : <div style={{ width: '100%', borderRadius: 8, marginBottom: 6, padding: '18px 10px', background: S.card, color: S.text3, textAlign: 'center', fontSize: 11 }}>📷 Older full-size photo</div>
+                  )}
                   <span style={{ fontFamily: 'monospace', fontSize: 12, fontWeight: 700, color: p.aura >= 0 ? S.blue : S.red }}>{fmtAura(p.aura)}</span>
                 </div>
               ))}
