@@ -242,7 +242,6 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
     : (post.image_url ? [post.image_url] : [])
   const isLegacyHeavyPost = postImageUrls.length > 0
     && postImageUrls.some((url: string) => !/\.webp(?:\?|$)/i.test(url))
-    && Date.now() - new Date(post.created_at).getTime() > 3 * 24 * 60 * 60 * 1000
   const shouldRenderPhotos = !isLegacyHeavyPost || showLegacyPhotos
 
   return (
