@@ -23,7 +23,7 @@ with check (
   exists (
     select 1 from public.posts p
     where p.id = post_id
-      and p.user_id = auth.uid()
+      and p.user_id = (select auth.uid())
   )
 );
 
@@ -36,7 +36,7 @@ using (
   exists (
     select 1 from public.posts p
     where p.id = post_id
-      and p.user_id = auth.uid()
+      and p.user_id = (select auth.uid())
   )
 );
 
