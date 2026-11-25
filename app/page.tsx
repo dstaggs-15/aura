@@ -210,9 +210,9 @@ const renderText = (text: string, color = '#ccc') => {
   )
 }
 
-const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount, isCommentsOpen, tags, commentVotes, postVotes, onVote, onCommentVote, onOpenProfile, onToggleComments, onComment, onEdit, onLoadVotes }: {
+const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount, isCommentsOpen, tags, calloutTargetIds, commentVotes, postVotes, onVote, onCommentVote, onOpenProfile, onToggleComments, onComment, onEdit, onLoadVotes }: {
   post: any; profile: any; profiles: any[]; myVote: number | undefined;
-  comments: any[]; commentCount: number; isCommentsOpen: boolean; tags: string[]; commentVotes: Record<number, number>; postVotes: any[];
+  comments: any[]; commentCount: number; isCommentsOpen: boolean; tags: string[]; calloutTargetIds: string[]; commentVotes: Record<number, number>; postVotes: any[];
   onVote: (postId: number, val: number) => void; onCommentVote: (commentId: number, val: number) => void;
   onOpenProfile: (p: any) => void;
   onToggleComments: (postId: number) => void;
@@ -227,7 +227,9 @@ const PostCard = memo(({ post, profile, profiles, myVote, comments, commentCount
   const taggedUsers = tags.map(id => profiles.find((p: any) => p.id === id)).filter(Boolean)
   const fallbackCalloutTarget = post.callout_target_id ? profiles.find((p: any) => p.id === post.callout_target_id) : null
   const calloutTargets = post.callout_sentiment
-    ? (taggedUsers.length > 0 ? taggedUsers : (fallbackCalloutTarget ? [fallbackCalloutTarget] : []))
+    ? (calloutTargetIds.length > 0
+        ? calloutTargetIds.map(id => profiles.find((p: any) => p.id === id)).filter(Boolean)
+        : (fallbackCalloutTarget ? [fallbackCalloutTarget] : []))
     : []
   const [showVotes, setShowVotes] = useState(false)
   const [votesLoading, setVotesLoading] = useState(false)
@@ -478,6 +480,7 @@ export default function Home() {
   const [myVotes, setMyVotes] = useState<Record<number, number>>({})
   const [commentCounts, setCommentCounts] = useState<Record<number, number>>({})
   const [postTags, setPostTags] = useState<Record<number, string[]>>({})
+  const [postCalloutTargets, setPostCalloutTargets] = useState<Record<number, string[]>>({})
   const [tab, setTab] = useState('feed')
   const [lbTab, setLbTab] = useState('people')
   const [filter, setFilter] = useState('recent')
@@ -486,6 +489,8 @@ export default function Home() {
   const [postImages, setPostImages] = useState<File[]>([])
   const [selectedTags, setSelectedTags] = useState<string[]>([])
   const [showTagPicker, setShowTagPicker] = useState(false)
+  const [selectedCalloutTargets, setSelectedCalloutTargets] = useState<string[]>([])
+  const [showCalloutPicker, setShowCalloutPicker] = useState(false)
   const [calloutMode, setCalloutMode] = useState(false)
   const [calloutSentiment, setCalloutSentiment] = useState<'good' | 'bad'>('good')
   const [profileCustomVote, setProfileCustomVote] = useState('')
@@ -549,7 +554,7 @@ export default function Home() {
     const run = (async () => {
       const [
         { data: profs }, { data: ps }, { data: bucket }, { data: vs },
-        { data: counts }, { data: tags }, { data: pvs }, { data: friendshipRows }, { data: announcementRows },
+        { data: counts }, { data: tags }, { data: calloutRows }, { data: pvs }, { data: friendshipRows }, { data: announcementRows },
       ] = await Promise.all([
         supabase.from('profiles').select('*'),
         supabase.from('posts').select('*').order('created_at', { ascending: false }),
@@ -557,6 +562,7 @@ export default function Home() {
         supabase.from('votes').select('*').eq('voter_id', uid),
         supabase.from('post_comment_counts').select('*'),
         supabase.from('post_tags').select('*'),
+        supabase.from('post_callout_targets').select('*'),
         supabase.from('profile_votes').select('*').eq('voter_id', uid),
         supabase.from('friendships').select('*').order('created_at', { ascending: false }),
         supabase.from('announcements').select('*').order('created_at', { ascending: false }).limit(100),
@@ -579,8 +585,13 @@ export default function Home() {
       if (counts) { const m: Record<number, number> = {}; counts.forEach((x: any) => m[x.post_id] = Number(x.count)); setCommentCounts(m) }
       if (tags) {
         const m: Record<number, string[]> = {}
-        tags.forEach((t: any) => { if (!m[t.post_id]) m[t.post_id] = []; m[t.post_id].push(t.tagged_user_id) })
+        tags.forEach((t: any) => { if (!m[t.post_id]) m[t.post_id] = []; if (!m[t.post_id].includes(t.tagged_user_id)) m[t.post_id].push(t.tagged_user_id) })
         setPostTags(m)
+      }
+      if (calloutRows) {
+        const m: Record<number, string[]> = {}
+        calloutRows.forEach((t: any) => { if (!m[t.post_id]) m[t.post_id] = []; if (!m[t.post_id].includes(t.user_id)) m[t.post_id].push(t.user_id) })
+        setPostCalloutTargets(m)
       }
       if (pvs) { const m: Record<string, number> = {}; pvs.forEach((v: any) => m[v.target_id] = v.value); setProfileVotes(m) }
       if (friendshipRows) setFriendships(friendshipRows)
@@ -716,8 +727,8 @@ export default function Home() {
 
   const handlePost = async () => {
     if (!draftRef.current.trim() || !profile || posting) return
-    if (calloutMode && selectedTags.length < 1) {
-      notify('A callout must tag at least one person', 'neg')
+    if (calloutMode && selectedCalloutTargets.length < 1) {
+      notify('A callout must choose at least one person', 'neg')
       return
     }
     if (postImages.length > 3) {
@@ -755,7 +766,7 @@ export default function Home() {
       aura: 0,
       image_url: imageUrls[0] || null,
       image_urls: imageUrls,
-      callout_target_id: calloutMode ? selectedTags[0] : null,
+      callout_target_id: calloutMode ? selectedCalloutTargets[0] : null,
       callout_sentiment: calloutMode ? calloutSentiment : null,
     }).select('*').single()
 
@@ -771,12 +782,18 @@ export default function Home() {
         await supabase.from('post_tags').insert(selectedTags.map(uid => ({ post_id: data.id, tagged_user_id: uid })))
         setPostTags(t => ({ ...t, [data.id]: selectedTags }))
       }
+      if (calloutMode && selectedCalloutTargets.length > 0) {
+        await supabase.from('post_callout_targets').insert(selectedCalloutTargets.map(uid => ({ post_id: data.id, user_id: uid })))
+        setPostCalloutTargets(t => ({ ...t, [data.id]: selectedCalloutTargets }))
+      }
       setPosts(ps => [data, ...ps])
       draftRef.current = ''
       const ta = document.getElementById('post-textarea') as HTMLTextAreaElement
       if (ta) ta.value = ''
       setPostImages([])
       setSelectedTags([])
+      setSelectedCalloutTargets([])
+      setShowCalloutPicker(false)
       setCalloutMode(false)
       setCalloutSentiment('good')
       setComposing(false)
@@ -1197,7 +1214,16 @@ export default function Home() {
                     <span style={{ fontSize: 11, color: S.text3 }}>What kind of callout?</span>
                     <button onClick={() => setCalloutSentiment('good')} style={{ padding: '6px 10px', borderRadius: 8, border: `1px solid ${calloutSentiment === 'good' ? '#22c55e' : S.border2}`, background: calloutSentiment === 'good' ? '#12351d' : 'transparent', color: calloutSentiment === 'good' ? '#98e8ae' : S.text2, cursor: 'pointer' }}>🙂 Good</button>
                     <button onClick={() => setCalloutSentiment('bad')} style={{ padding: '6px 10px', borderRadius: 8, border: `1px solid ${calloutSentiment === 'bad' ? S.red : S.border2}`, background: calloutSentiment === 'bad' ? S.redDim : 'transparent', color: calloutSentiment === 'bad' ? '#ffb4b4' : S.text2, cursor: 'pointer' }}>😡 Bad</button>
-                    <span style={{ fontSize: 10, color: S.text3 }}>Tag one or more people. They split 100% of this post’s Aura evenly.</span>
+                    <span style={{ fontSize: 10, color: S.text3 }}>Choose one or more callout targets. Normal tags stay separate.</span>
+                    <div style={{ position: 'relative', width: '100%' }}>
+                      <button onClick={() => { setShowCalloutPicker(!showCalloutPicker); setShowTagPicker(false) }} style={{ padding: '6px 10px', borderRadius: 8, border: `1px solid ${selectedCalloutTargets.length ? S.fire : S.border2}`, background: selectedCalloutTargets.length ? '#2a1b12' : 'transparent', color: selectedCalloutTargets.length ? S.fire : S.text2, cursor: 'pointer', fontSize: 11 }}>
+                        🎯 {selectedCalloutTargets.length ? `${selectedCalloutTargets.length} callout target${selectedCalloutTargets.length === 1 ? '' : 's'}` : 'Choose callout target'}
+                      </button>
+                      {showCalloutPicker && (
+                        <TagPicker profiles={otherProfiles} selected={selectedCalloutTargets}
+                          onToggle={id => setSelectedCalloutTargets(t => t.includes(id) ? t.filter(x => x !== id) : [...t, id])} />
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -1219,7 +1245,7 @@ export default function Home() {
                     </button>
                   </div>
                   <div style={{ display: 'flex', gap: 8 }}>
-                    <button onClick={() => { setComposing(false); draftRef.current = ''; setPostImages([]); setSelectedTags([]); setCalloutMode(false); setCalloutSentiment('good') }} style={{ padding: '7px 16px', borderRadius: 10, fontSize: 13, border: `1px solid ${S.border2}`, background: 'transparent', color: S.text2, cursor: 'pointer' }}>Cancel</button>
+                    <button onClick={() => { setComposing(false); draftRef.current = ''; setPostImages([]); setSelectedTags([]); setSelectedCalloutTargets([]); setShowCalloutPicker(false); setCalloutMode(false); setCalloutSentiment('good') }} style={{ padding: '7px 16px', borderRadius: 10, fontSize: 13, border: `1px solid ${S.border2}`, background: 'transparent', color: S.text2, cursor: 'pointer' }}>Cancel</button>
                     <button onClick={handlePost} disabled={posting} style={{ padding: '7px 18px', borderRadius: 10, fontSize: 13, fontWeight: 600, border: 'none', background: posting ? S.border : S.blue, color: posting ? S.text3 : '#fff', cursor: posting ? 'default' : 'pointer' }}>
                       {posting ? '...' : 'Post'}
                     </button>
@@ -1248,7 +1274,7 @@ export default function Home() {
           {sorted.map(p => (
             <PostCard key={p.id} post={p} profile={profile} profiles={profiles} myVote={myVotes[p.id]}
               comments={comments[p.id] || []} commentCount={commentCounts[p.id] || 0}
-              isCommentsOpen={openComments[p.id] || false} tags={postTags[p.id] || []} commentVotes={commentVotes} postVotes={allPostVotes.filter(v => v.post_id === p.id)}
+              isCommentsOpen={openComments[p.id] || false} tags={postTags[p.id] || []} calloutTargetIds={postCalloutTargets[p.id] || []} commentVotes={commentVotes} postVotes={allPostVotes.filter(v => v.post_id === p.id)}
               onVote={handleVote} onCommentVote={handleCommentVote} onOpenProfile={setModalProfile}
               onToggleComments={handleToggleComments} onComment={handleComment} onEdit={handleEditPost} onLoadVotes={loadVotesForPost} />
           ))}
@@ -1628,7 +1654,7 @@ export default function Home() {
             : posts.filter(p => p.user_id === profile.id).map(p => (
               <PostCard key={p.id} post={p} profile={profile} profiles={profiles} myVote={myVotes[p.id]}
                 comments={comments[p.id] || []} commentCount={commentCounts[p.id] || 0}
-                isCommentsOpen={openComments[p.id] || false} tags={postTags[p.id] || []} commentVotes={commentVotes} postVotes={allPostVotes.filter(v => v.post_id === p.id)}
+                isCommentsOpen={openComments[p.id] || false} tags={postTags[p.id] || []} calloutTargetIds={postCalloutTargets[p.id] || []} commentVotes={commentVotes} postVotes={allPostVotes.filter(v => v.post_id === p.id)}
                 onVote={handleVote} onCommentVote={handleCommentVote} onOpenProfile={setModalProfile}
                 onToggleComments={handleToggleComments} onComment={handleComment} onEdit={handleEditPost} onLoadVotes={loadVotesForPost} />
             ))
