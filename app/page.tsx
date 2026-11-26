@@ -1221,7 +1221,10 @@ export default function Home() {
                       </button>
                       {showCalloutPicker && (
                         <TagPicker profiles={otherProfiles} selected={selectedCalloutTargets}
-                          onToggle={id => setSelectedCalloutTargets(t => t.includes(id) ? t.filter(x => x !== id) : [...t, id])} />
+                          onToggle={id => {
+                            setSelectedCalloutTargets(t => t.includes(id) ? t.filter(x => x !== id) : [...t, id])
+                            setShowCalloutPicker(false)
+                          }} />
                       )}
                     </div>
                   </div>
